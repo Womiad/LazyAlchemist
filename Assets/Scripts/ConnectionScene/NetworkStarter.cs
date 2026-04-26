@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using Unity.Netcode;
@@ -22,9 +23,19 @@ public class NetworkStarter : MonoBehaviour
             return;
         }
 
+        var localIpList = GetLocalIPv4Addresses().ToList();
+        var localIps = localIpList.Count > 0 ? string.Join(", ", localIpList) : "No LAN IPv4 found";
+        var primaryLocalIp = localIpList.Count > 0 ? localIpList[0] : clientConnectAddress;
+
         transport.SetConnectionData("127.0.0.1", port, "0.0.0.0");
         Debug.Log($"Start Host on port {port}");
-        Debug.Log($"LAN IPs: {string.Join(", ", GetLocalIPv4Addresses())}");
+        Debug.Log($"LAN IPs: {localIps}");
+
+        clientConnectAddress = primaryLocalIp;
+        uiManager?.SetClientAddress(clientConnectAddress);
+        uiManager?.SetConnectionHint($"Host IP: {localIps}  Port: {port}");
+        uiManager?.ShowConnectionScreen($"Hosting on {localIps}:{port}");
+
         NetworkManager.Singleton.StartHost();
         BeginWaitingForConnection();
     }
@@ -36,8 +47,16 @@ public class NetworkStarter : MonoBehaviour
             return;
         }
 
+        clientConnectAddress = uiManager != null
+            ? uiManager.GetClientAddress(clientConnectAddress)
+            : clientConnectAddress;
+
         transport.SetConnectionData(clientConnectAddress, port);
         Debug.Log($"Start Client -> {clientConnectAddress}:{port}");
+
+        uiManager?.SetConnectionHint($"Client target: {clientConnectAddress}:{port}");
+        uiManager?.ShowConnectionScreen($"Connecting to {clientConnectAddress}:{port}...");
+
         NetworkManager.Singleton.StartClient();
         BeginWaitingForConnection();
     }
@@ -111,7 +130,9 @@ public class NetworkStarter : MonoBehaviour
         }
 
         UnregisterCallbacks();
-        uiManager?.ShowLobby();
+
+        var modeLabel = NetworkManager.Singleton.IsHost ? "Host connected" : "Client connected";
+        uiManager?.ShowLobby($"{modeLabel} on port {port}");
     }
 
     private void HandleClientDisconnected(ulong clientId)
@@ -162,13 +183,61 @@ public class NetworkStarter : MonoBehaviour
     {
         var hostName = Dns.GetHostName();
         var addresses = Dns.GetHostAddresses(hostName);
+        var privateAddresses = new List<string>();
+        var otherAddresses = new List<string>();
 
         foreach (var address in addresses)
         {
             if (address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(address))
             {
-                yield return address.ToString();
+                var addressString = address.ToString();
+
+                if (IsPrivateLanAddress(address))
+                {
+                    privateAddresses.Add(addressString);
+                }
+                else
+                {
+                    otherAddresses.Add(addressString);
+                }
             }
         }
+
+        foreach (var address in privateAddresses)
+        {
+            yield return address;
+        }
+
+        foreach (var address in otherAddresses)
+        {
+            yield return address;
+        }
+    }
+
+    private static bool IsPrivateLanAddress(IPAddress address)
+    {
+        var bytes = address.GetAddressBytes();
+
+        if (bytes.Length != 4)
+        {
+            return false;
+        }
+
+        if (bytes[0] == 10)
+        {
+            return true;
+        }
+
+        if (bytes[0] == 192 && bytes[1] == 168)
+        {
+            return true;
+        }
+
+        if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
+        {
+            return true;
+        }
+
+        return false;
     }
 }
