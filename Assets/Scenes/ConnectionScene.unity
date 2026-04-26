@@ -636,6 +636,7 @@ MonoBehaviour:
   connectionUI: {fileID: 1502432113}
   hostUI: {fileID: 1163952865}
   clientUI: {fileID: 1098544087}
+  connectionStatusText: {fileID: 0}
 --- !u!4 &702680006
 Transform:
   m_ObjectHideFlags: 0
@@ -1395,6 +1396,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::NetworkStarter
   uiManager: {fileID: 702680005}
+  clientConnectAddress: 192.168.0.147
+  port: 7777
+  connectTimeoutSeconds: 8
 --- !u!1 &1603646100
 GameObject:
   m_ObjectHideFlags: 0
@@ -1690,10 +1694,10 @@ MonoBehaviour:
   m_MaxConnectAttempts: 60
   m_DisconnectTimeoutMS: 30000
   ConnectionData:
-    Address: 10.199.111.45
+    Address: 192.168.0.147
     Port: 7777
     WebSocketPath: /
-    ServerListenAddress: 127.0.0.1
+    ServerListenAddress: 0.0.0.0
     ClientBindPort: 0
   DebugSimulator:
     PacketDelayMS: 0
