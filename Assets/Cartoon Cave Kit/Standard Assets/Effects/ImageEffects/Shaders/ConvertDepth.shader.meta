@@ -1,0 +1,11 @@
+fileFormatVersion: 2
+guid: 14768d3865b1342e3a861fbe19ba2db2
+ShaderImporter:
+  userData: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 74702
+  packageName: Untitled
+  packageVersion: 1.0
+  assetPath: Assets/Cartoon Cave Kit/Standard Assets/Effects/ImageEffects/Shaders/ConvertDepth.shader
+  uploadId: 144301

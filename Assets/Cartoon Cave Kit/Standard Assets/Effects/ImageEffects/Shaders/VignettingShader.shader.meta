@@ -1,0 +1,11 @@
+fileFormatVersion: 2
+guid: 627943dc7a9a74286b70a4f694a0acd5
+ShaderImporter:
+  userData: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 74702
+  packageName: Untitled
+  packageVersion: 1.0
+  assetPath: Assets/Cartoon Cave Kit/Standard Assets/Effects/ImageEffects/Shaders/VignettingShader.shader
+  uploadId: 144301

@@ -1,0 +1,11 @@
+fileFormatVersion: 2
+guid: 43ca18288c424f645aaa1e9e07f04c50
+ShaderImporter:
+  userData: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 74702
+  packageName: Untitled
+  packageVersion: 1.0
+  assetPath: Assets/Cartoon Cave Kit/Standard Assets/Effects/ImageEffects/Shaders/SSAOShader.shader
+  uploadId: 144301

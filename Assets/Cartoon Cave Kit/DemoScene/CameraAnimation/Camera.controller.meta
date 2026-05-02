@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 42d8e2c88c03a8247bbf6a38b2c9ab79
+timeCreated: 1477612251
+licenseType: Store
+NativeFormatImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 74702
+  packageName: Untitled
+  packageVersion: 1.0
+  assetPath: Assets/Cartoon Cave Kit/DemoScene/CameraAnimation/Camera.controller
+  uploadId: 144301

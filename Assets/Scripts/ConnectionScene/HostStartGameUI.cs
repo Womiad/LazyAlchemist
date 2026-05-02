@@ -4,6 +4,7 @@ using UnityEngine.SceneManagement;
 
 public class HostStartGameUI : MonoBehaviour
 {
+    public string sceneToLoad = "TestStage1";
     public void OnClickStartGame()
     {
         if (!NetworkManager.Singleton.IsHost) return;
@@ -15,7 +16,7 @@ public class HostStartGameUI : MonoBehaviour
         }
 
         NetworkManager.Singleton.SceneManager.LoadScene(
-            "TestPlayScene",
+            sceneToLoad,
             LoadSceneMode.Single
         );
     }

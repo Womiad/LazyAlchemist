@@ -1,0 +1,11 @@
+fileFormatVersion: 2
+guid: a9df009a214e24a5ebbf271595f8d5b6
+ShaderImporter:
+  userData: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 74702
+  packageName: Untitled
+  packageVersion: 1.0
+  assetPath: Assets/Cartoon Cave Kit/Standard Assets/Effects/ImageEffects/Shaders/_BloomAndFlares/SeparableBlurPlus.shader
+  uploadId: 144301
