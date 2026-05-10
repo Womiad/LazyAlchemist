@@ -1,5 +1,6 @@
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 public class LobbyUIManager : MonoBehaviour
@@ -13,10 +14,23 @@ public class LobbyUIManager : MonoBehaviour
     private InputField clientAddressInput;
     private Text connectionStatusText;
     private Text connectionHintText;
+    private Text hostClientStateText;
+    private Text hostStartHintText;
+    private Text clientStateText;
+    private Text clientReadyHintText;
+    private string latestClientAddress;
+    private bool hasLocalClientReadyOverride;
+    private bool localClientReadyOverride;
 
     private void Awake()
     {
+        ApplyMobileLandscapeOrientation();
         EnsureConnectionWidgets();
+    }
+
+    private void Update()
+    {
+        RefreshLobbyState();
     }
 
     public string GetClientAddress(string fallbackAddress)
@@ -28,13 +42,18 @@ public class LobbyUIManager : MonoBehaviour
             return fallbackAddress;
         }
 
-        var value = clientAddressInput.text.Trim();
+        CommitClientAddressInput();
+
+        var value = NormalizeClientAddress(clientAddressInput.text);
         if (string.IsNullOrEmpty(value))
         {
-            value = fallbackAddress;
+            value = !string.IsNullOrWhiteSpace(latestClientAddress)
+                ? latestClientAddress
+                : fallbackAddress;
             clientAddressInput.text = value;
         }
 
+        latestClientAddress = value;
         SaveClientAddress(value);
         return value;
     }
@@ -48,12 +67,14 @@ public class LobbyUIManager : MonoBehaviour
             return;
         }
 
-        clientAddressInput.text = value;
-        SaveClientAddress(value);
+        latestClientAddress = NormalizeClientAddress(value);
+        clientAddressInput.text = latestClientAddress;
+        SaveClientAddress(latestClientAddress);
     }
 
     public void ShowLobby(string statusMessage = "")
     {
+        EnsureLobbyWidgets();
         connectionUI.SetActive(false);
         SetStatus(statusMessage);
 
@@ -67,6 +88,8 @@ public class LobbyUIManager : MonoBehaviour
             hostUI.SetActive(false);
             clientUI.SetActive(true);
         }
+
+        RefreshLobbyState();
     }
 
     public void ShowConnectionScreen(string message = "")
@@ -95,6 +118,27 @@ public class LobbyUIManager : MonoBehaviour
         connectionHintText.text = message;
     }
 
+    public void ShowStartBlockedByClientReady()
+    {
+        EnsureLobbyWidgets();
+
+        if (hostStartHintText != null)
+        {
+            hostStartHintText.text = "Client must press Ready before Start.";
+            hostStartHintText.color = new Color32(255, 205, 90, 255);
+        }
+
+        RefreshLobbyState();
+    }
+
+    public void ShowClientReadyFeedback(bool ready)
+    {
+        EnsureLobbyWidgets();
+        hasLocalClientReadyOverride = true;
+        localClientReadyOverride = ready;
+        SetClientReadyPrompt(ready);
+    }
+
     private void EnsureConnectionWidgets()
     {
         if (connectionUI == null || clientAddressInput != null)
@@ -115,16 +159,19 @@ public class LobbyUIManager : MonoBehaviour
         }
 
         var savedAddress = PlayerPrefs.GetString(clientAddressPrefsKey, string.Empty);
+        latestClientAddress = string.IsNullOrWhiteSpace(savedAddress) ? "192.168.0.10" : savedAddress;
 
         clientAddressInput = CreateInputField(
             "ClientAddressInput",
             connectionUI.transform,
             font,
-            string.IsNullOrWhiteSpace(savedAddress) ? "192.168.0.10" : savedAddress,
+            latestClientAddress,
             "Host IP",
             new Vector2(0f, -55f),
             new Vector2(280f, 36f)
         );
+        clientAddressInput.onValueChanged.AddListener(HandleClientAddressChanged);
+        clientAddressInput.onEndEdit.AddListener(HandleClientAddressChanged);
 
         connectionHintText = CreateStandaloneText(
             "ConnectionHintText",
@@ -152,10 +199,188 @@ public class LobbyUIManager : MonoBehaviour
         SetStatus(string.Empty);
     }
 
+    private void EnsureLobbyWidgets()
+    {
+        var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (font == null)
+        {
+            font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        }
+
+        if (font == null)
+        {
+            Debug.LogWarning("Built-in font not found. Lobby status widgets were not created.");
+            return;
+        }
+
+        if (hostUI != null && hostClientStateText == null)
+        {
+            hostClientStateText = CreateStandaloneText(
+                "HostClientStateText",
+                hostUI.transform,
+                font,
+                new Vector2(0f, 95f),
+                new Vector2(520f, 44f),
+                20,
+                TextAnchor.MiddleCenter,
+                Color.white
+            );
+
+            hostStartHintText = CreateStandaloneText(
+                "HostStartHintText",
+                hostUI.transform,
+                font,
+                new Vector2(0f, 50f),
+                new Vector2(560f, 52f),
+                17,
+                TextAnchor.MiddleCenter,
+                new Color32(255, 205, 90, 255)
+            );
+        }
+
+        if (clientUI != null && clientStateText == null)
+        {
+            clientStateText = CreateStandaloneText(
+                "ClientStateText",
+                clientUI.transform,
+                font,
+                new Vector2(0f, 95f),
+                new Vector2(520f, 48f),
+                20,
+                TextAnchor.MiddleCenter,
+                Color.white
+            );
+
+            clientReadyHintText = CreateStandaloneText(
+                "ClientReadyHintText",
+                clientUI.transform,
+                font,
+                new Vector2(0f, 50f),
+                new Vector2(560f, 52f),
+                17,
+                TextAnchor.MiddleCenter,
+                new Color32(255, 205, 90, 255)
+            );
+        }
+    }
+
+    private void RefreshLobbyState()
+    {
+        if (LobbyManager.Instance == null || NetworkManager.Singleton == null)
+        {
+            return;
+        }
+
+        var ready = LobbyManager.Instance.IsClientReady();
+        var localDisplayReady = ready;
+
+        if (NetworkManager.Singleton.IsClient && !NetworkManager.Singleton.IsHost && hasLocalClientReadyOverride)
+        {
+            localDisplayReady = localClientReadyOverride;
+
+            if (ready == localClientReadyOverride)
+            {
+                hasLocalClientReadyOverride = false;
+            }
+        }
+
+        var stateText = ready ? "Client state: Ready" : "Client state: Not Ready";
+        var stateColor = ready
+            ? new Color32(100, 235, 135, 255)
+            : new Color32(255, 205, 90, 255);
+        var localStateColor = localDisplayReady
+            ? new Color32(100, 235, 135, 255)
+            : new Color32(255, 205, 90, 255);
+
+        if (hostClientStateText != null)
+        {
+            hostClientStateText.text = stateText;
+            hostClientStateText.color = stateColor;
+        }
+
+        if (clientStateText != null)
+        {
+            clientStateText.text = localDisplayReady ? "Your state: Ready" : "Your state: Not Ready";
+            clientStateText.color = localStateColor;
+            SetClientReadyPrompt(localDisplayReady);
+        }
+
+        if (hostStartHintText != null && ready)
+        {
+            hostStartHintText.text = "Ready to start.";
+            hostStartHintText.color = new Color32(100, 235, 135, 255);
+        }
+        else if (hostStartHintText != null
+                 && (string.IsNullOrEmpty(hostStartHintText.text) || hostStartHintText.text == "Ready to start."))
+        {
+            hostStartHintText.text = "Waiting for client Ready.";
+            hostStartHintText.color = new Color32(255, 205, 90, 255);
+        }
+    }
+
+    private void SetClientReadyPrompt(bool ready)
+    {
+        if (clientReadyHintText == null)
+        {
+            return;
+        }
+
+        if (ready)
+        {
+            clientReadyHintText.text = "Ready sent. Waiting for host to start.";
+            clientReadyHintText.color = new Color32(100, 235, 135, 255);
+        }
+        else
+        {
+            clientReadyHintText.text = "Not Ready. Press Ready when you are prepared.";
+            clientReadyHintText.color = new Color32(255, 205, 90, 255);
+        }
+    }
+
     private void SaveClientAddress(string value)
     {
         PlayerPrefs.SetString(clientAddressPrefsKey, value);
         PlayerPrefs.Save();
+    }
+
+    private static void ApplyMobileLandscapeOrientation()
+    {
+        if (!Application.isMobilePlatform)
+        {
+            return;
+        }
+
+        Screen.autorotateToPortrait = false;
+        Screen.autorotateToPortraitUpsideDown = false;
+        Screen.autorotateToLandscapeLeft = true;
+        Screen.autorotateToLandscapeRight = true;
+        Screen.orientation = ScreenOrientation.LandscapeLeft;
+    }
+
+    private void HandleClientAddressChanged(string value)
+    {
+        latestClientAddress = NormalizeClientAddress(value);
+    }
+
+    private void CommitClientAddressInput()
+    {
+        if (clientAddressInput == null)
+        {
+            return;
+        }
+
+        clientAddressInput.DeactivateInputField();
+        clientAddressInput.ForceLabelUpdate();
+
+        if (EventSystem.current != null && EventSystem.current.currentSelectedGameObject == clientAddressInput.gameObject)
+        {
+            EventSystem.current.SetSelectedGameObject(null);
+        }
+    }
+
+    private static string NormalizeClientAddress(string value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
     }
 
     private void SetStatus(string message)

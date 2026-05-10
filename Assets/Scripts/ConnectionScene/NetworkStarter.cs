@@ -15,6 +15,7 @@ public class NetworkStarter : MonoBehaviour
     [SerializeField] private float connectTimeoutSeconds = 8f;
 
     private Coroutine waitForConnectionCoroutine;
+    private Coroutine startClientCoroutine;
 
     public void OnHost()
     {
@@ -42,14 +43,40 @@ public class NetworkStarter : MonoBehaviour
 
     public void OnClient()
     {
+        if (startClientCoroutine != null)
+        {
+            StopCoroutine(startClientCoroutine);
+        }
+
+        startClientCoroutine = StartCoroutine(StartClientWithLatestAddress());
+    }
+
+    private IEnumerator StartClientWithLatestAddress()
+    {
         if (!TryGetTransport(out var transport))
         {
-            return;
+            startClientCoroutine = null;
+            yield break;
         }
 
         clientConnectAddress = uiManager != null
             ? uiManager.GetClientAddress(clientConnectAddress)
             : clientConnectAddress;
+
+        if (string.IsNullOrWhiteSpace(clientConnectAddress))
+        {
+            uiManager?.ShowConnectionFailed("Host IP is empty.");
+            startClientCoroutine = null;
+            yield break;
+        }
+
+        yield return ShutdownActiveNetworkIfNeeded();
+
+        if (!TryGetTransport(out transport))
+        {
+            startClientCoroutine = null;
+            yield break;
+        }
 
         transport.SetConnectionData(clientConnectAddress, port);
         Debug.Log($"Start Client -> {clientConnectAddress}:{port}");
@@ -59,11 +86,56 @@ public class NetworkStarter : MonoBehaviour
 
         NetworkManager.Singleton.StartClient();
         BeginWaitingForConnection();
+        startClientCoroutine = null;
     }
 
     private void OnDisable()
     {
+        if (startClientCoroutine != null)
+        {
+            StopCoroutine(startClientCoroutine);
+            startClientCoroutine = null;
+        }
+
         UnregisterCallbacks();
+    }
+
+    private IEnumerator ShutdownActiveNetworkIfNeeded()
+    {
+        if (NetworkManager.Singleton == null)
+        {
+            yield break;
+        }
+
+        if (waitForConnectionCoroutine != null)
+        {
+            StopCoroutine(waitForConnectionCoroutine);
+            waitForConnectionCoroutine = null;
+        }
+
+        UnregisterCallbacks();
+
+        if (!NetworkManager.Singleton.IsClient
+            && !NetworkManager.Singleton.IsServer
+            && !NetworkManager.Singleton.IsListening
+            && !NetworkManager.Singleton.ShutdownInProgress)
+        {
+            yield break;
+        }
+
+        if (!NetworkManager.Singleton.ShutdownInProgress)
+        {
+            NetworkManager.Singleton.Shutdown();
+        }
+
+        while (NetworkManager.Singleton != null
+               && (NetworkManager.Singleton.IsClient
+                   || NetworkManager.Singleton.IsServer
+                   || NetworkManager.Singleton.IsListening
+                   || NetworkManager.Singleton.ShutdownInProgress))
+        {
+            yield return null;
+        }
     }
 
     private void BeginWaitingForConnection()
