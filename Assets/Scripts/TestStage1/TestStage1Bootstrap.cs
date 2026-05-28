@@ -30,6 +30,9 @@ public static class TestStage1Bootstrap
 
         var managerObject = new GameObject(ManagerName);
         managerObject.AddComponent<TestStage1HostBetaJoints>();
+        managerObject.AddComponent<TestStage1ClientPresentation>();
         managerObject.AddComponent<TestStage1UI>();
+        managerObject.AddComponent<TestStage1BookUIController>();
+        managerObject.AddComponent<TestStage1ElementDragController>();
     }
 }

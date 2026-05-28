@@ -35,7 +35,7 @@ public class TestStage1HostBetaJoints : MonoBehaviour
     {
         if (IsHost())
         {
-            CaptureCurrentBaseColor();
+            ApplyPresetColor(TestStage1UI.EmptyElementColorIndex);
         }
     }
 
@@ -127,6 +127,7 @@ public class TestStage1HostBetaJoints : MonoBehaviour
             1 => new Color(1f, 0.86f, 0.05f, 1f),
             2 => new Color(0.05f, 0.9f, 0.18f, 1f),
             3 => new Color(0.08f, 0.36f, 1f, 1f),
+            TestStage1UI.EmptyElementColorIndex => Color.black,
             _ => Color.white
         };
     }
