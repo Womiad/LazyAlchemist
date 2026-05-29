@@ -15,6 +15,7 @@ public class TestStage1HostBetaJoints : MonoBehaviour
 
     private MaterialPropertyBlock propertyBlock;
     private Color currentColor = Color.white;
+    private bool hasAppliedAnyPreset;
 
     private void Awake()
     {
@@ -39,6 +40,14 @@ public class TestStage1HostBetaJoints : MonoBehaviour
         }
     }
 
+    private void Update()
+    {
+        if (IsHost() && !hasAppliedAnyPreset)
+        {
+            ApplyPresetColor(TestStage1UI.EmptyElementColorIndex);
+        }
+    }
+
     public void ApplyPresetColor(byte colorIndex)
     {
         if (!IsHost())
@@ -56,6 +65,7 @@ public class TestStage1HostBetaJoints : MonoBehaviour
         currentColor = GetPresetColor(colorIndex);
         currentColor.a = 1f;
         ApplyColor(currentColor);
+        hasAppliedAnyPreset = true;
     }
 
     private void ResolveTargetRenderer()

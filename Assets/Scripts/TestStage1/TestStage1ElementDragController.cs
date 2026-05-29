@@ -37,13 +37,30 @@ public class TestStage1ElementDragController : MonoBehaviour
         )
     };
 
+    private readonly ObjectSlotBinding[] objectSlots =
+    {
+        new ObjectSlotBinding("slime_bait", "blank_left", "slime_bait", "slime_bait")
+    };
+
     private Canvas canvas;
+    private Transform clientUiRoot;
     private bool initialized;
+
+    private void OnEnable()
+    {
+        TestStage1ItemInventoryController.InventoryChanged += OnInventoryChanged;
+    }
+
+    private void OnDisable()
+    {
+        TestStage1ItemInventoryController.InventoryChanged -= OnInventoryChanged;
+    }
 
     private void Update()
     {
         if (initialized)
         {
+            TryInitializePendingObjectSlots();
             return;
         }
 
@@ -52,6 +69,12 @@ public class TestStage1ElementDragController : MonoBehaviour
 
     public bool TryDrop(string slotName, string itemName, PointerEventData eventData)
     {
+        var objectSlot = FindObjectSlot(slotName);
+        if (objectSlot != null)
+        {
+            return TryDropObjectSlot(objectSlot, itemName, eventData);
+        }
+
         var slot = FindSlot(slotName);
         if (slot == null
             || eventData == null
@@ -74,6 +97,13 @@ public class TestStage1ElementDragController : MonoBehaviour
 
     public void TryRemoveBlankItem(string slotName, PointerEventData eventData)
     {
+        var objectSlot = FindObjectSlot(slotName);
+        if (objectSlot != null)
+        {
+            TryRemoveObjectSlot(objectSlot, eventData);
+            return;
+        }
+
         var slot = FindSlot(slotName);
         if (slot == null || slot.DropZone == null || eventData == null || IsPointerInside(slot.DropZone, eventData))
         {
@@ -96,6 +126,7 @@ public class TestStage1ElementDragController : MonoBehaviour
             return;
         }
 
+        clientUiRoot = clientUi.transform;
         canvas = clientUi.GetComponentInChildren<Canvas>(true);
         if (canvas == null)
         {
@@ -111,6 +142,36 @@ public class TestStage1ElementDragController : MonoBehaviour
         }
 
         initialized = true;
+        TryInitializePendingObjectSlots();
+    }
+
+    private void TryInitializePendingObjectSlots()
+    {
+        if (clientUiRoot == null)
+        {
+            return;
+        }
+
+        foreach (var objectSlot in objectSlots)
+        {
+            if (!objectSlot.Initialized)
+            {
+                TryInitializeObjectSlot(clientUiRoot, objectSlot);
+            }
+        }
+    }
+
+    private void OnInventoryChanged()
+    {
+        if (!initialized || TestStage1ItemInventoryController.HasSlimeBait)
+        {
+            return;
+        }
+
+        foreach (var objectSlot in objectSlots)
+        {
+            objectSlot.HideBlankItem();
+        }
     }
 
     private bool TryInitializeSlot(Transform clientUi, SlotBinding slot)
@@ -161,12 +222,55 @@ public class TestStage1ElementDragController : MonoBehaviour
         return true;
     }
 
+    private bool TryInitializeObjectSlot(Transform clientUi, ObjectSlotBinding slot)
+    {
+        var dropZoneTransform = FindChildByName(clientUi, slot.DropZoneName);
+        var sourceTransform = dropZoneTransform == null
+            ? null
+            : FindChildByNameOutsideParent(clientUi, slot.SourceObjectName, dropZoneTransform);
+        var blankTransform = dropZoneTransform == null
+            ? null
+            : FindDirectChildByName(dropZoneTransform, slot.BlankObjectName);
+        if (dropZoneTransform == null || sourceTransform == null)
+        {
+            return false;
+        }
+
+        slot.DropZone = dropZoneTransform as RectTransform;
+        slot.SourceObject = sourceTransform.gameObject;
+        slot.BlankObject = blankTransform == null ? null : blankTransform.gameObject;
+        if (slot.DropZone == null || slot.BlankObject == null)
+        {
+            return false;
+        }
+
+        var sourceButton = slot.SourceObject.GetComponent<Button>();
+        if (sourceButton != null)
+        {
+            sourceButton.interactable = true;
+        }
+
+        SetupDragSource(slot.SourceObject, slot.SourceContainerName, slot.ItemName, false);
+        SetupDragSource(slot.BlankObject, slot.SourceContainerName, slot.ItemName, true);
+        slot.HideBlankItem();
+        slot.Initialized = true;
+        return true;
+    }
+
     private void SetupDragSource(GameObject source, string slotName, string itemName, bool isBlankItem)
     {
         var graphic = source.GetComponent<Graphic>();
         if (graphic != null)
         {
             graphic.raycastTarget = true;
+        }
+
+        foreach (var childGraphic in source.GetComponentsInChildren<Graphic>(true))
+        {
+            if (childGraphic != null && childGraphic.gameObject != source)
+            {
+                childGraphic.raycastTarget = false;
+            }
         }
 
         var dragSource = source.GetComponent<TestStage1ElementDragSource>();
@@ -216,6 +320,58 @@ public class TestStage1ElementDragController : MonoBehaviour
             if (string.Equals(slot.SourceContainerName, slotName, StringComparison.Ordinal))
             {
                 return slot;
+            }
+        }
+
+        return null;
+    }
+
+    private ObjectSlotBinding FindObjectSlot(string slotName)
+    {
+        foreach (var slot in objectSlots)
+        {
+            if (string.Equals(slot.SourceContainerName, slotName, StringComparison.Ordinal))
+            {
+                return slot;
+            }
+        }
+
+        return null;
+    }
+
+    private bool TryDropObjectSlot(ObjectSlotBinding slot, string itemName, PointerEventData eventData)
+    {
+        if (!TestStage1ItemInventoryController.HasSlimeBait
+            || eventData == null
+            || slot.DropZone == null
+            || !string.Equals(slot.ItemName, itemName, StringComparison.Ordinal)
+            || !IsPointerInside(slot.DropZone, eventData))
+        {
+            return false;
+        }
+
+        slot.ShowBlankItem();
+        return true;
+    }
+
+    private void TryRemoveObjectSlot(ObjectSlotBinding slot, PointerEventData eventData)
+    {
+        if (slot.DropZone == null || eventData == null || IsPointerInside(slot.DropZone, eventData))
+        {
+            return;
+        }
+
+        slot.HideBlankItem();
+    }
+
+    private static Texture FindDisplayTexture(Transform itemRoot)
+    {
+        var rawImages = itemRoot.GetComponentsInChildren<RawImage>(true);
+        foreach (var rawImage in rawImages)
+        {
+            if (rawImage != null && rawImage.texture != null)
+            {
+                return rawImage.texture;
             }
         }
 
@@ -283,6 +439,26 @@ public class TestStage1ElementDragController : MonoBehaviour
         for (var i = 0; i < parent.childCount; i++)
         {
             var match = FindChildByName(parent.GetChild(i), objectName);
+            if (match != null)
+            {
+                return match;
+            }
+        }
+
+        return null;
+    }
+
+    private static Transform FindChildByNameOutsideParent(Transform parent, string objectName, Transform excludedParent)
+    {
+        if (string.Equals(parent.name, objectName, StringComparison.Ordinal)
+            && (excludedParent == null || (parent != excludedParent && !parent.IsChildOf(excludedParent))))
+        {
+            return parent;
+        }
+
+        for (var i = 0; i < parent.childCount; i++)
+        {
+            var match = FindChildByNameOutsideParent(parent.GetChild(i), objectName, excludedParent);
             if (match != null)
             {
                 return match;
@@ -363,6 +539,53 @@ public class TestStage1ElementDragController : MonoBehaviour
             {
                 itemObject.SetActive(string.Equals(itemObject.name, itemName, StringComparison.Ordinal));
             }
+        }
+    }
+
+    private sealed class ObjectSlotBinding
+    {
+        public readonly string SourceContainerName;
+        public readonly string DropZoneName;
+        public readonly string ItemName;
+        public readonly string SourceObjectName;
+        public readonly string BlankObjectName;
+
+        public RectTransform DropZone;
+        public GameObject SourceObject;
+        public GameObject BlankObject;
+        public bool Initialized;
+
+        public ObjectSlotBinding(
+            string sourceContainerName,
+            string dropZoneName,
+            string itemName,
+            string blankObjectName)
+        {
+            SourceContainerName = sourceContainerName;
+            DropZoneName = dropZoneName;
+            ItemName = itemName;
+            SourceObjectName = itemName;
+            BlankObjectName = blankObjectName;
+        }
+
+        public void HideBlankItem()
+        {
+            if (BlankObject == null)
+            {
+                return;
+            }
+
+            BlankObject.SetActive(false);
+        }
+
+        public void ShowBlankItem()
+        {
+            if (BlankObject == null)
+            {
+                return;
+            }
+
+            BlankObject.SetActive(true);
         }
     }
 
