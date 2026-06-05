@@ -89,7 +89,13 @@ public class TestStage1ElementDragController : MonoBehaviour
 
         if (slot.SendHostColorChange && item.ColorIndex.HasValue)
         {
+            TestStage1HandState.SetElementPower(TestStage1HandState.ElementFromColorIndex(item.ColorIndex.Value));
             TestStage1UI.RequestHostPresetColor(item.ColorIndex.Value);
+        }
+        else if (!slot.SendHostColorChange)
+        {
+            TestStage1HandState.SetRightHandTool(TestStage1HandState.ToolFromItemName(item.ObjectName));
+            TestStage1Tool3DController.RequestHostTool(item.ObjectName);
         }
 
         return true;
@@ -114,7 +120,13 @@ public class TestStage1ElementDragController : MonoBehaviour
 
         if (slot.SendHostColorChange)
         {
+            TestStage1HandState.SetElementPower(TestStage1ElementPower.None);
             TestStage1UI.RequestHostPresetColor(TestStage1UI.EmptyElementColorIndex);
+        }
+        else
+        {
+            TestStage1HandState.SetRightHandTool(TestStage1RightHandTool.None);
+            TestStage1Tool3DController.RequestHostEmptyTool();
         }
     }
 
@@ -172,6 +184,8 @@ public class TestStage1ElementDragController : MonoBehaviour
         {
             objectSlot.HideBlankItem();
         }
+
+        TestStage1HandStateSync.RequestHostLeftHandSlimeBait(false);
     }
 
     private bool TryInitializeSlot(Transform clientUi, SlotBinding slot)
@@ -351,6 +365,7 @@ public class TestStage1ElementDragController : MonoBehaviour
         }
 
         slot.ShowBlankItem();
+        TestStage1HandStateSync.RequestHostLeftHandSlimeBait(true);
         return true;
     }
 
@@ -362,6 +377,7 @@ public class TestStage1ElementDragController : MonoBehaviour
         }
 
         slot.HideBlankItem();
+        TestStage1HandStateSync.RequestHostLeftHandSlimeBait(false);
     }
 
     private static Texture FindDisplayTexture(Transform itemRoot)

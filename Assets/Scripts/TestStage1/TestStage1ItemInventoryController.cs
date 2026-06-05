@@ -5,7 +5,7 @@ using UnityEngine.SceneManagement;
 
 public class TestStage1ItemInventoryController : MonoBehaviour
 {
-    private const bool TestModeUnlockFireflyOnStart = true;
+    private static readonly bool TestModeUnlockFireflyOnStart = false;
 
     private const string ClientUiName = "ClientUI";
     private const string FireflyObjectName = "firefly";

@@ -32,7 +32,13 @@ public static class TestStage1Bootstrap
         managerObject.AddComponent<TestStage1HostBetaJoints>();
         managerObject.AddComponent<TestStage1ClientPresentation>();
         managerObject.AddComponent<TestStage1UI>();
+        managerObject.AddComponent<TestStage1HandStateSync>();
+        managerObject.AddComponent<TestStage1Tool3DController>();
         managerObject.AddComponent<TestStage1ItemInventoryController>();
+        managerObject.AddComponent<TestStage1PressFPromptController>();
+        managerObject.AddComponent<TestStage1FireflyCollectionController>();
+        managerObject.AddComponent<TestStage1WaterCrystalCollectionController>();
+        managerObject.AddComponent<TestStage1LandCrystalCollectionController>();
         managerObject.AddComponent<TestStage1BookUIController>();
         managerObject.AddComponent<TestStage1ElementDragController>();
         managerObject.AddComponent<TestStage1CraftingTableController>();

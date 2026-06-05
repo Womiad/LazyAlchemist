@@ -63,6 +63,7 @@ public class TestStage1UI : MonoBehaviour
 
         if (NetworkManager.Singleton.IsHost)
         {
+            TestStage1HandState.SetElementPower(TestStage1HandState.ElementFromColorIndex(colorIndex));
             TestStage1HostBetaJoints.Instance?.ApplyPresetColor(colorIndex);
             return;
         }
@@ -104,6 +105,7 @@ public class TestStage1UI : MonoBehaviour
     private static void OnChangeColorMessageReceived(ulong senderClientId, FastBufferReader reader)
     {
         reader.ReadValueSafe(out byte colorIndex);
+        TestStage1HandState.SetElementPower(TestStage1HandState.ElementFromColorIndex(colorIndex));
         TestStage1HostBetaJoints.Instance?.ApplyPresetColor(colorIndex);
     }
 }
