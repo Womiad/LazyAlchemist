@@ -14,6 +14,9 @@ public class TestStage1StaffMagicAttackController : MonoBehaviour
     private const string PlayerTag = "Player";
     private const float LoopPlaySeconds = 1f;
     private const float DeactivateSafetyDelaySeconds = 3f;
+    private const float AdvantageDamage = 35f;
+    private const float NeutralDamage = 1f;
+    private const float SameElementDamage = 0f;
 
     [Header("Prefab Effects")]
     [SerializeField] private Transform nonMagicEffectPrefab;
@@ -25,6 +28,13 @@ public class TestStage1StaffMagicAttackController : MonoBehaviour
 
     [Header("Scene Fallback")]
     [SerializeField] private bool useMagicRootChildrenFallback = true;
+
+    [Header("Damage")]
+    [SerializeField] private float attackRadius = 5f;
+    [SerializeField] private LayerMask damageMask = ~0;
+    [SerializeField] private bool showDebugAttackRange = true;
+    [SerializeField] private float debugAttackRangeSeconds = 1f;
+    [SerializeField] private Color debugAttackRangeColor = new Color(1f, 0.25f, 0.1f, 0.85f);
 
     private readonly Dictionary<TestStage1ElementPower, Transform> effectsByElement =
         new Dictionary<TestStage1ElementPower, Transform>();
@@ -111,6 +121,10 @@ public class TestStage1StaffMagicAttackController : MonoBehaviour
         }
 
         PlayEffect(CreateRuntimeEffect(effect));
+        if (broadcast)
+        {
+            ApplyAreaDamage(element);
+        }
 
         if (broadcast)
         {
@@ -241,6 +255,101 @@ public class TestStage1StaffMagicAttackController : MonoBehaviour
         }
 
         return Mathf.Min(lifetime, DeactivateSafetyDelaySeconds);
+    }
+
+    private void ApplyAreaDamage(TestStage1ElementPower attackElement)
+    {
+        var center = ResolveAttackCenter();
+        DrawDebugAttackRange(center);
+
+        var hits = Physics.OverlapSphere(center, attackRadius, damageMask, QueryTriggerInteraction.Ignore);
+        var damagedSlimes = new HashSet<TestStage1SlimeSmallController>();
+
+        foreach (var hit in hits)
+        {
+            var slime = FindActiveSlimeController(hit);
+            if (slime == null || !slime.isActiveAndEnabled || !damagedSlimes.Add(slime))
+            {
+                continue;
+            }
+
+            slime.TakeDamage(GetDamage(attackElement, slime.ElementPower));
+        }
+    }
+
+    private static TestStage1SlimeSmallController FindActiveSlimeController(Collider hit)
+    {
+        foreach (var slime in hit.GetComponentsInParent<TestStage1SlimeSmallController>(true))
+        {
+            if (slime != null && slime.isActiveAndEnabled)
+            {
+                return slime;
+            }
+        }
+
+        return null;
+    }
+
+    private void DrawDebugAttackRange(Vector3 center)
+    {
+        if (!showDebugAttackRange)
+        {
+            return;
+        }
+
+        var rangeObject = new GameObject("DebugAttackRange");
+        rangeObject.transform.position = center;
+
+        var lineRenderer = rangeObject.AddComponent<LineRenderer>();
+        lineRenderer.useWorldSpace = false;
+        lineRenderer.loop = true;
+        lineRenderer.positionCount = 96;
+        lineRenderer.startWidth = 0.06f;
+        lineRenderer.endWidth = 0.06f;
+        lineRenderer.material = new Material(Shader.Find("Sprites/Default"));
+        lineRenderer.startColor = debugAttackRangeColor;
+        lineRenderer.endColor = debugAttackRangeColor;
+
+        for (var i = 0; i < lineRenderer.positionCount; i++)
+        {
+            var angle = (float)i / lineRenderer.positionCount * Mathf.PI * 2f;
+            lineRenderer.SetPosition(i, new Vector3(
+                Mathf.Cos(angle) * attackRadius,
+                0.05f,
+                Mathf.Sin(angle) * attackRadius
+            ));
+        }
+
+        Destroy(rangeObject, debugAttackRangeSeconds);
+    }
+
+    private Vector3 ResolveAttackCenter()
+    {
+        if (runtimeEffectSpawnRoot != null)
+        {
+            return runtimeEffectSpawnRoot.position;
+        }
+
+        var player = GameObject.FindGameObjectWithTag(PlayerTag);
+        return player != null ? player.transform.position : transform.position;
+    }
+
+    private static float GetDamage(TestStage1ElementPower attackElement, TestStage1ElementPower slimeElement)
+    {
+        if (attackElement == slimeElement)
+        {
+            return SameElementDamage;
+        }
+
+        return IsElementAdvantage(attackElement, slimeElement) ? AdvantageDamage : NeutralDamage;
+    }
+
+    private static bool IsElementAdvantage(TestStage1ElementPower attackElement, TestStage1ElementPower slimeElement)
+    {
+        return (attackElement == TestStage1ElementPower.Fire && slimeElement == TestStage1ElementPower.Land)
+            || (attackElement == TestStage1ElementPower.Land && slimeElement == TestStage1ElementPower.Wind)
+            || (attackElement == TestStage1ElementPower.Wind && slimeElement == TestStage1ElementPower.Water)
+            || (attackElement == TestStage1ElementPower.Water && slimeElement == TestStage1ElementPower.Fire);
     }
 
     private static float GetMaxLifetime(ParticleSystem.MinMaxCurve curve)

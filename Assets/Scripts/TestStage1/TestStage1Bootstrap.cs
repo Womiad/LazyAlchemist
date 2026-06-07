@@ -23,30 +23,44 @@ public static class TestStage1Bootstrap
 
     private static void EnsureManagerForActiveScene()
     {
-        if (SceneManager.GetActiveScene().name != SceneName || GameObject.Find(ManagerName) != null)
+        if (SceneManager.GetActiveScene().name != SceneName)
         {
             return;
         }
 
-        var managerObject = new GameObject(ManagerName);
-        managerObject.AddComponent<TestStage1HostBetaJoints>();
-        managerObject.AddComponent<TestStage1ClientPresentation>();
-        managerObject.AddComponent<TestStage1UI>();
-        managerObject.AddComponent<TestStage1HandStateSync>();
-        managerObject.AddComponent<TestStage1Tool3DController>();
+        var managerObject = GameObject.Find(ManagerName);
+        if (managerObject == null)
+        {
+            managerObject = new GameObject(ManagerName);
+        }
+
+        EnsureComponent<TestStage1HostBetaJoints>(managerObject);
+        EnsureComponent<TestStage1ClientPresentation>(managerObject);
+        EnsureComponent<TestStage1UI>(managerObject);
+        EnsureComponent<TestStage1HandStateSync>(managerObject);
+        EnsureComponent<TestStage1Tool3DController>(managerObject);
         if (Object.FindFirstObjectByType<TestStage1StaffMagicAttackController>() == null)
         {
             managerObject.AddComponent<TestStage1StaffMagicAttackController>();
         }
 
-        managerObject.AddComponent<TestStage1ItemInventoryController>();
-        managerObject.AddComponent<TestStage1PressFPromptController>();
-        managerObject.AddComponent<TestStage1FireflyCollectionController>();
-        managerObject.AddComponent<TestStage1WaterCrystalCollectionController>();
-        managerObject.AddComponent<TestStage1LandCrystalCollectionController>();
-        managerObject.AddComponent<TestStage1BookUIController>();
-        managerObject.AddComponent<TestStage1ElementDragController>();
-        managerObject.AddComponent<TestStage1CraftingTableController>();
-        managerObject.AddComponent<TestStage1SlimeSpawner>();
+        EnsureComponent<TestStage1ItemInventoryController>(managerObject);
+        EnsureComponent<TestStage1PressFPromptController>(managerObject);
+        EnsureComponent<TestStage1FireflyCollectionController>(managerObject);
+        EnsureComponent<TestStage1WaterCrystalCollectionController>(managerObject);
+        EnsureComponent<TestStage1LandCrystalCollectionController>(managerObject);
+        EnsureComponent<TestStage1BookUIController>(managerObject);
+        EnsureComponent<TestStage1ElementDragController>(managerObject);
+        EnsureComponent<TestStage1CraftingTableController>(managerObject);
+        EnsureComponent<TestStage1SlimeSpawner>(managerObject);
+        EnsureComponent<TestStage1SlimeHuntController>(managerObject);
+    }
+
+    private static void EnsureComponent<T>(GameObject target) where T : Component
+    {
+        if (target.GetComponent<T>() == null)
+        {
+            target.AddComponent<T>();
+        }
     }
 }

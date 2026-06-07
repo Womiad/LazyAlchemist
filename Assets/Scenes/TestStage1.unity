@@ -3220,7 +3220,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &259253517
 Transform:
   m_ObjectHideFlags: 0
@@ -5617,7 +5617,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "\u6536\u96C6\u53F2\u840A\u59C6\u7403"
+  m_text: "\u8A0E\u4F10\u53F2\u840A\u59C6 (0/10)"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 709a107f5357045479104d814c97276c, type: 2}
   m_sharedMaterial: {fileID: -7278900979421753911, guid: 709a107f5357045479104d814c97276c, type: 2}
@@ -5683,7 +5683,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: 0, y: 0, z: -197.182, w: 0}
+  m_margin: {x: 0, y: 0, z: -219.80136, w: 0}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   m_hasFontAssetChanged: 0
@@ -16857,6 +16857,13 @@ MonoBehaviour:
   waterEffectPrefab: {fileID: 648606017}
   effectSpawnRoot: {fileID: 537987415}
   useMagicRootChildrenFallback: 1
+  attackRadius: 5
+  damageMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  showDebugAttackRange: 1
+  debugAttackRangeSeconds: 1
+  debugAttackRangeColor: {r: 1, g: 0.25, b: 0.1, a: 0.85}
 --- !u!1 &1654384889
 GameObject:
   m_ObjectHideFlags: 0
@@ -17228,7 +17235,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1680972623
 Transform:
   m_ObjectHideFlags: 0

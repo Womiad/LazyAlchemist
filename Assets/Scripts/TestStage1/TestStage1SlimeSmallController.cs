@@ -1,15 +1,27 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 
 [RequireComponent(typeof(Rigidbody))]
 public class TestStage1SlimeSmallController : MonoBehaviour
 {
+    private const float DefaultMaxHealth = 100f;
+
     [Header("Health")]
-    [SerializeField] private float maxHealth = 30f;
-    [SerializeField] private float currentHealth = 30f;
+    [SerializeField] private float maxHealth = DefaultMaxHealth;
+    [SerializeField] private float currentHealth = DefaultMaxHealth;
+    [SerializeField] private TestStage1ElementPower elementPower = TestStage1ElementPower.None;
     [SerializeField] private Vector3 healthBarOffset = new Vector3(0f, 1.65f, 0f);
     [SerializeField] private Vector2 healthBarSize = new Vector2(120f, 14f);
     [SerializeField] private float healthBarScale = 0.01f;
+    [SerializeField] private float healthBarAnimationSeconds = 1f;
+
+    [Header("Damage Text")]
+    [SerializeField] private Vector3 damageTextOffset = new Vector3(0f, 2.05f, 0f);
+    [SerializeField] private float damageTextSeconds = 1f;
+    [SerializeField] private float damageTextRiseDistance = 0.65f;
+    [SerializeField] private int normalDamageTextSize = 36;
+    [SerializeField] private int bigDamageTextSize = 58;
 
     [Header("Wander")]
     [SerializeField] private float moveSpeed = 1.2f;
@@ -30,10 +42,23 @@ public class TestStage1SlimeSmallController : MonoBehaviour
     private float nextMoveDecisionTime;
     private float nextJumpTime;
     private Image healthFill;
+    private RectTransform healthFillRect;
     private Canvas healthCanvas;
+    private Coroutine healthBarAnimation;
+    private bool isDying;
+    private bool defeatedNotified;
+
+    public TestStage1ElementPower ElementPower => elementPower;
+    public static event System.Action<TestStage1SlimeSmallController> Defeated;
 
     private void Awake()
     {
+        if (!IsPrimaryController())
+        {
+            enabled = false;
+            return;
+        }
+
         rb = GetComponent<Rigidbody>();
         if (rb == null)
         {
@@ -55,16 +80,23 @@ public class TestStage1SlimeSmallController : MonoBehaviour
         rb.interpolation = RigidbodyInterpolation.Interpolate;
         rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
 
-        currentHealth = Mathf.Clamp(currentHealth <= 0f ? maxHealth : currentHealth, 0f, maxHealth);
+        maxHealth = DefaultMaxHealth;
+        currentHealth = maxHealth;
+        elementPower = ResolveElementPower();
         spawnPosition = transform.position;
         PickNewWanderTarget();
         ScheduleNextJump();
         CreateHealthBar();
-        UpdateHealthBar();
+        UpdateHealthBar(false);
     }
 
     private void FixedUpdate()
     {
+        if (currentHealth <= 0f)
+        {
+            return;
+        }
+
         MoveTowardWanderTarget();
         TryJump();
     }
@@ -76,17 +108,24 @@ public class TestStage1SlimeSmallController : MonoBehaviour
 
     public void TakeDamage(float amount)
     {
-        if (amount <= 0f || currentHealth <= 0f)
+        if (amount < 0f || currentHealth <= 0f)
+        {
+            return;
+        }
+
+        ShowDamageText(amount);
+
+        if (amount <= 0f)
         {
             return;
         }
 
         currentHealth = Mathf.Max(0f, currentHealth - amount);
-        UpdateHealthBar();
+        UpdateHealthBar(true);
 
         if (currentHealth <= 0f)
         {
-            Die();
+            StartCoroutine(DieAfterHealthBarAnimation());
         }
     }
 
@@ -98,17 +137,17 @@ public class TestStage1SlimeSmallController : MonoBehaviour
         }
 
         currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
-        UpdateHealthBar();
+        UpdateHealthBar(true);
     }
 
     public void SetHealth(float value)
     {
         currentHealth = Mathf.Clamp(value, 0f, maxHealth);
-        UpdateHealthBar();
+        UpdateHealthBar(true);
 
         if (currentHealth <= 0f)
         {
-            Die();
+            StartCoroutine(DieAfterHealthBarAnimation());
         }
     }
 
@@ -201,13 +240,11 @@ public class TestStage1SlimeSmallController : MonoBehaviour
         background.rectTransform.offsetMax = Vector2.zero;
 
         healthFill = CreateBarImage("Fill", background.transform, new Color(0.25f, 0.9f, 0.32f, 0.95f));
-        healthFill.type = Image.Type.Filled;
-        healthFill.fillMethod = Image.FillMethod.Horizontal;
-        healthFill.fillOrigin = (int)Image.OriginHorizontal.Left;
-        healthFill.rectTransform.anchorMin = Vector2.zero;
-        healthFill.rectTransform.anchorMax = Vector2.one;
-        healthFill.rectTransform.offsetMin = new Vector2(2f, 2f);
-        healthFill.rectTransform.offsetMax = new Vector2(-2f, -2f);
+        healthFillRect = healthFill.rectTransform;
+        healthFillRect.anchorMin = Vector2.zero;
+        healthFillRect.anchorMax = Vector2.one;
+        healthFillRect.offsetMin = new Vector2(2f, 2f);
+        healthFillRect.offsetMax = new Vector2(-2f, -2f);
     }
 
     private static Image CreateBarImage(string objectName, Transform parent, Color color)
@@ -219,14 +256,55 @@ public class TestStage1SlimeSmallController : MonoBehaviour
         return image;
     }
 
-    private void UpdateHealthBar()
+    private void UpdateHealthBar(bool animate)
     {
-        if (healthFill == null)
+        if (healthFillRect == null)
         {
             return;
         }
 
-        healthFill.fillAmount = maxHealth <= 0f ? 0f : currentHealth / maxHealth;
+        var targetFill = maxHealth <= 0f ? 0f : currentHealth / maxHealth;
+        if (!animate || healthBarAnimationSeconds <= 0f)
+        {
+            SetHealthFillWidth(targetFill);
+            return;
+        }
+
+        if (healthBarAnimation != null)
+        {
+            StopCoroutine(healthBarAnimation);
+        }
+
+        healthBarAnimation = StartCoroutine(AnimateHealthBar(targetFill));
+    }
+
+    private IEnumerator AnimateHealthBar(float targetFill)
+    {
+        var startFill = healthFillRect.anchorMax.x;
+        var elapsed = 0f;
+
+        while (elapsed < healthBarAnimationSeconds)
+        {
+            elapsed += Time.deltaTime;
+            var t = Mathf.Clamp01(elapsed / healthBarAnimationSeconds);
+            SetHealthFillWidth(Mathf.Lerp(startFill, targetFill, t));
+            yield return null;
+        }
+
+        SetHealthFillWidth(targetFill);
+        healthBarAnimation = null;
+    }
+
+    private void SetHealthFillWidth(float fill)
+    {
+        if (healthFillRect == null)
+        {
+            return;
+        }
+
+        fill = Mathf.Clamp01(fill);
+        healthFillRect.anchorMax = new Vector2(fill, 1f);
+        healthFillRect.offsetMax = new Vector2(-2f, -2f);
     }
 
     private void FaceHealthBarToCamera()
@@ -241,6 +319,115 @@ public class TestStage1SlimeSmallController : MonoBehaviour
 
     private void Die()
     {
+        if (!defeatedNotified)
+        {
+            defeatedNotified = true;
+            Defeated?.Invoke(this);
+        }
+
         gameObject.SetActive(false);
+    }
+
+    private IEnumerator DieAfterHealthBarAnimation()
+    {
+        if (isDying)
+        {
+            yield break;
+        }
+
+        isDying = true;
+        yield return new WaitForSeconds(Mathf.Max(0f, healthBarAnimationSeconds));
+        Die();
+    }
+
+    private void ShowDamageText(float amount)
+    {
+        StartCoroutine(ShowDamageTextRoutine(amount));
+    }
+
+    private IEnumerator ShowDamageTextRoutine(float amount)
+    {
+        var textObject = new GameObject("DamageText");
+        textObject.transform.position = transform.position + damageTextOffset;
+
+        var textMesh = textObject.AddComponent<TextMesh>();
+        textMesh.text = "-" + Mathf.RoundToInt(amount);
+        textMesh.anchor = TextAnchor.MiddleCenter;
+        textMesh.alignment = TextAlignment.Center;
+        textMesh.fontSize = amount >= 35f ? bigDamageTextSize : normalDamageTextSize;
+        textMesh.characterSize = 0.035f;
+        textMesh.color = amount >= 35f
+            ? new Color(1f, 0.92f, 0.2f, 1f)
+            : Color.white;
+
+        var startPosition = textObject.transform.position;
+        var endPosition = startPosition + Vector3.up * damageTextRiseDistance;
+        var elapsed = 0f;
+
+        while (elapsed < damageTextSeconds)
+        {
+            elapsed += Time.deltaTime;
+            var t = Mathf.Clamp01(elapsed / damageTextSeconds);
+
+            textObject.transform.position = Vector3.Lerp(startPosition, endPosition, t);
+            FaceTransformToCamera(textObject.transform);
+
+            var color = textMesh.color;
+            color.a = 1f - t;
+            textMesh.color = color;
+
+            yield return null;
+        }
+
+        Destroy(textObject);
+    }
+
+    private static void FaceTransformToCamera(Transform target)
+    {
+        if (Camera.main == null)
+        {
+            return;
+        }
+
+        target.rotation = Camera.main.transform.rotation;
+    }
+
+    private bool IsPrimaryController()
+    {
+        var controllers = GetComponents<TestStage1SlimeSmallController>();
+        return controllers.Length == 0 || controllers[0] == this;
+    }
+
+    private TestStage1ElementPower ResolveElementPower()
+    {
+        if (elementPower != TestStage1ElementPower.None)
+        {
+            return elementPower;
+        }
+
+        var slimeName = name;
+        if (slimeName.IndexOf("flame", System.StringComparison.OrdinalIgnoreCase) >= 0
+            || slimeName.IndexOf("fire", System.StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return TestStage1ElementPower.Fire;
+        }
+
+        if (slimeName.IndexOf("land", System.StringComparison.OrdinalIgnoreCase) >= 0
+            || slimeName.IndexOf("earth", System.StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return TestStage1ElementPower.Land;
+        }
+
+        if (slimeName.IndexOf("wind", System.StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return TestStage1ElementPower.Wind;
+        }
+
+        if (slimeName.IndexOf("water", System.StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return TestStage1ElementPower.Water;
+        }
+
+        return TestStage1ElementPower.None;
     }
 }
