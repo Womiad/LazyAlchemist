@@ -17,6 +17,9 @@ public class TestStage1WaterCrystalCollectionController : MonoBehaviour
     private const string Task2IncompleteText = "收集水元素礦物";
     private const float CollectDistance = 3f;
 
+    public static event Action<bool> CompletedChanged;
+    public static bool IsCompleted { get; private set; }
+
     private Transform hostRoot;
     private Transform hostBody;
     private GameObject waterCrystal;
@@ -24,6 +27,13 @@ public class TestStage1WaterCrystalCollectionController : MonoBehaviour
     private bool initialized;
     private bool handlerRegistered;
     private bool waterCrystalCollected;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStaticState()
+    {
+        IsCompleted = false;
+        CompletedChanged = null;
+    }
 
     private void Update()
     {
@@ -99,6 +109,7 @@ public class TestStage1WaterCrystalCollectionController : MonoBehaviour
     private void ApplyCollectedState(bool isCollected)
     {
         waterCrystalCollected = isCollected;
+        SetCompletion(isCollected);
 
         if (waterCrystal != null && waterCrystal.activeSelf == isCollected)
         {
@@ -109,6 +120,17 @@ public class TestStage1WaterCrystalCollectionController : MonoBehaviour
         {
             task2Text.text = isCollected ? Task2CompletedText : Task2IncompleteText;
         }
+    }
+
+    private static void SetCompletion(bool isCompleted)
+    {
+        if (IsCompleted == isCompleted)
+        {
+            return;
+        }
+
+        IsCompleted = isCompleted;
+        CompletedChanged?.Invoke(IsCompleted);
     }
 
     private void BroadcastWaterCrystalCollected()

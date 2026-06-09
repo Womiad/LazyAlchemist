@@ -18,6 +18,9 @@ public class TestStage1FireflyCollectionController : MonoBehaviour
     private const string Task1IncompleteText = "收集螢火蟲";
     private const float CollectDistance = 3f;
 
+    public static event Action<bool> CompletedChanged;
+    public static bool IsCompleted { get; private set; }
+
     private Transform hostRoot;
     private Transform hostBody;
     private GameObject sceneFirefly;
@@ -26,6 +29,13 @@ public class TestStage1FireflyCollectionController : MonoBehaviour
     private bool initialized;
     private bool handlerRegistered;
     private bool fireflyCollected;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStaticState()
+    {
+        IsCompleted = false;
+        CompletedChanged = null;
+    }
 
     private void Update()
     {
@@ -106,6 +116,7 @@ public class TestStage1FireflyCollectionController : MonoBehaviour
     private void ApplyCollectedState(bool isCollected)
     {
         fireflyCollected = isCollected;
+        SetCompletion(isCollected);
         TestStage1ItemInventoryController.SetFireflyAcquired(isCollected);
 
         if (sceneFirefly != null && sceneFirefly.activeSelf == isCollected)
@@ -122,6 +133,17 @@ public class TestStage1FireflyCollectionController : MonoBehaviour
         {
             task1Text.text = isCollected ? Task1CompletedText : Task1IncompleteText;
         }
+    }
+
+    private static void SetCompletion(bool isCompleted)
+    {
+        if (IsCompleted == isCompleted)
+        {
+            return;
+        }
+
+        IsCompleted = isCompleted;
+        CompletedChanged?.Invoke(IsCompleted);
     }
 
     private void BroadcastFireflyCollected()

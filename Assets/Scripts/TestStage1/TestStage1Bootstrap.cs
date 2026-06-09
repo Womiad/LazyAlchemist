@@ -54,6 +54,7 @@ public static class TestStage1Bootstrap
         EnsureComponent<TestStage1CraftingTableController>(managerObject);
         EnsureComponent<TestStage1SlimeSpawner>(managerObject);
         EnsureComponent<TestStage1SlimeHuntController>(managerObject);
+        EnsureComponent<TestStage1CompletionController>(managerObject);
     }
 
     private static void EnsureComponent<T>(GameObject target) where T : Component

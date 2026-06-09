@@ -12,11 +12,21 @@ public class TestStage1SlimeHuntController : MonoBehaviour
     private const string Task3Name = "Task3";
     private const int RequiredDefeatCount = 10;
 
+    public static event Action<bool> CompletedChanged;
+    public static bool IsCompleted { get; private set; }
+
     private TMP_Text task3Text;
     private int defeatedCount;
     private bool initialized;
     private bool clientHandlerRegistered;
     private bool serverConnectionCallbackRegistered;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStaticState()
+    {
+        IsCompleted = false;
+        CompletedChanged = null;
+    }
 
     private void OnEnable()
     {
@@ -79,6 +89,7 @@ public class TestStage1SlimeHuntController : MonoBehaviour
     private void ApplyProgress(int count)
     {
         defeatedCount = Mathf.Clamp(count, 0, RequiredDefeatCount);
+        SetCompletion(defeatedCount >= RequiredDefeatCount);
 
         if (task3Text == null)
         {
@@ -91,6 +102,17 @@ public class TestStage1SlimeHuntController : MonoBehaviour
                 ? $"V 討伐史萊姆 ({RequiredDefeatCount}/{RequiredDefeatCount})"
                 : $"討伐史萊姆 ({defeatedCount}/{RequiredDefeatCount})";
         }
+    }
+
+    private static void SetCompletion(bool isCompleted)
+    {
+        if (IsCompleted == isCompleted)
+        {
+            return;
+        }
+
+        IsCompleted = isCompleted;
+        CompletedChanged?.Invoke(IsCompleted);
     }
 
     private void BroadcastProgress()
