@@ -258,6 +258,7 @@ public class TestStage1CraftingTableController : MonoBehaviour
 
     private void RefreshRecipeResult()
     {
+        var previousRecipe = currentRecipe;
         currentRecipe = FindMatchingRecipe();
         if (currentRecipe == null)
         {
@@ -273,6 +274,11 @@ public class TestStage1CraftingTableController : MonoBehaviour
 
         SetBlankTexture(outputBlank, outputTexture);
         ApplyRecipeReward(currentRecipe);
+
+        if (previousRecipe == null || !string.Equals(previousRecipe.OutputItemId, currentRecipe.OutputItemId, StringComparison.Ordinal))
+        {
+            TestStage1ClientUiAudio.PlayConstruct();
+        }
     }
 
     private static void ApplyRecipeReward(Recipe recipe)

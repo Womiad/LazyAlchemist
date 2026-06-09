@@ -29,6 +29,14 @@ public class TestStage1StaffMagicAttackController : MonoBehaviour
     [Header("Scene Fallback")]
     [SerializeField] private bool useMagicRootChildrenFallback = true;
 
+    [Header("Host Audio")]
+    [SerializeField] private AudioClip nonMagicAudioClip;
+    [SerializeField] private AudioClip fireMagicAudioClip;
+    [SerializeField] private AudioClip landMagicAudioClip;
+    [SerializeField] private AudioClip windMagicAudioClip;
+    [SerializeField] private AudioClip waterMagicAudioClip;
+    [SerializeField, Range(0f, 1f)] private float magicAudioVolume = 0.7f;
+
     [Header("Damage")]
     [SerializeField] private float attackRadius = 5f;
     [SerializeField] private LayerMask damageMask = ~0;
@@ -42,6 +50,7 @@ public class TestStage1StaffMagicAttackController : MonoBehaviour
     private readonly Dictionary<Transform, Coroutine> runningEffects = new Dictionary<Transform, Coroutine>();
     private Transform magicRoot;
     private Transform runtimeEffectSpawnRoot;
+    private AudioSource magicAudioSource;
     private bool initialized;
     private bool clientHandlerRegistered;
 
@@ -123,13 +132,52 @@ public class TestStage1StaffMagicAttackController : MonoBehaviour
         PlayEffect(CreateRuntimeEffect(effect));
         if (broadcast)
         {
+            PlayHostAttackAudio(element);
             ApplyAreaDamage(element);
-        }
-
-        if (broadcast)
-        {
             BroadcastAttack(element);
         }
+    }
+
+    private void PlayHostAttackAudio(TestStage1ElementPower element)
+    {
+        if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsHost)
+        {
+            return;
+        }
+
+        var clip = GetAttackAudioClip(element);
+        if (clip == null)
+        {
+            return;
+        }
+
+        EnsureMagicAudioSource();
+        magicAudioSource.PlayOneShot(clip, magicAudioVolume);
+    }
+
+    private AudioClip GetAttackAudioClip(TestStage1ElementPower element)
+    {
+        return element switch
+        {
+            TestStage1ElementPower.Fire => fireMagicAudioClip,
+            TestStage1ElementPower.Land => landMagicAudioClip,
+            TestStage1ElementPower.Wind => windMagicAudioClip,
+            TestStage1ElementPower.Water => waterMagicAudioClip,
+            _ => nonMagicAudioClip
+        };
+    }
+
+    private void EnsureMagicAudioSource()
+    {
+        if (magicAudioSource != null)
+        {
+            return;
+        }
+
+        magicAudioSource = gameObject.AddComponent<AudioSource>();
+        magicAudioSource.playOnAwake = false;
+        magicAudioSource.loop = false;
+        magicAudioSource.spatialBlend = 0f;
     }
 
     private void CachePrefabEffects()

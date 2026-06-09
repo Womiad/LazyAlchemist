@@ -134,7 +134,13 @@ public class TestStage1BookUIController : MonoBehaviour
             return;
         }
 
+        var previousPageIndex = pageIndex;
         pageIndex = Mathf.Max(0, pageIndex - 1);
+        if (pageIndex != previousPageIndex)
+        {
+            TestStage1ClientUiAudio.PlayPageTurn();
+        }
+
         RefreshPages();
     }
 
@@ -145,7 +151,13 @@ public class TestStage1BookUIController : MonoBehaviour
             return;
         }
 
+        var previousPageIndex = pageIndex;
         pageIndex = Mathf.Min(pages.Length - 1, pageIndex + 1);
+        if (pageIndex != previousPageIndex)
+        {
+            TestStage1ClientUiAudio.PlayPageTurn();
+        }
+
         RefreshPages();
     }
 

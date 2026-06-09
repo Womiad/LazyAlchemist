@@ -1,0 +1,20 @@
+IF THE SONG HAS AN INTRO:
+
+1. Add both the "INTRO" and "LOOP" tracks to play at the same time
+
+2. Next, set a delay for the "LOOP" track so that they line up and play sequentially. If you need assistance, listen to the "Fade-Out"
+	track for guidance
+
+3. Set the "LOOP" track to loop
+
+
+--------------
+
+
+IF THE SONG HAS A REVERB TAIL:
+
+1. Add the "LOOP" track
+
+2. Add the "REVERB TAIL" track to the very end of the "LOOP" track 
+
+3. Set the "REVERB TAIL" to play only after the "LOOP" track finishes
