@@ -12,6 +12,11 @@ public class TestStage1PressFPromptController : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetStaticState()
     {
+        ResetRuntimeState();
+    }
+
+    public static void ResetRuntimeState()
+    {
         prompt = null;
         requestedVisible = false;
     }

@@ -4015,7 +4015,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &259253517
 Transform:
   m_ObjectHideFlags: 0
@@ -21968,6 +21968,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TestStage1ClientUiAudio
   pageTurnClip: {fileID: 8300000, guid: 993e3d0929e53874292cae36cf15e6c1, type: 3}
   constructClip: {fileID: 8300000, guid: de547975673283c439ceab00ff85a9f3, type: 3}
+  changeItemClip: {fileID: 8300000, guid: 55ba75307fb415f4884d30c0543e136d, type: 3}
   volume: 0.8
 --- !u!1001 &1650004839
 PrefabInstance:

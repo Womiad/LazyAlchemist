@@ -7,6 +7,7 @@ public class TestStage1ClientUiAudio : MonoBehaviour
 
     [SerializeField] private AudioClip pageTurnClip;
     [SerializeField] private AudioClip constructClip;
+    [SerializeField] private AudioClip changeItemClip;
     [SerializeField, Range(0f, 1f)] private float volume = 0.8f;
 
     private AudioSource audioSource;
@@ -32,6 +33,11 @@ public class TestStage1ClientUiAudio : MonoBehaviour
     public static void PlayConstruct()
     {
         Instance?.Play(Instance.constructClip);
+    }
+
+    public static void PlayItemChange()
+    {
+        Instance?.Play(Instance.changeItemClip);
     }
 
     private void Play(AudioClip clip)

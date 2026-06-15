@@ -2,18 +2,25 @@ using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 public class TestStage1ClientPresentation : MonoBehaviour
 {
     private const string ClientUiName = "ClientUI";
     private const string HostModelName = "Host3D";
+    private static readonly Vector2 ClientUiPortraitReferenceResolution = new Vector2(1080f, 1920f);
+    private static readonly Vector2 ClientUiLandscapeReferenceResolution = new Vector2(1920f, 1080f);
+    private const float ClientUiMaxLandscapeScale = 1.55f;
 
     private readonly Dictionary<Camera, CameraRenderState> cameraStates = new Dictionary<Camera, CameraRenderState>();
 
     private GameObject clientUi;
+    private CanvasScaler clientUiScaler;
     private GameObject hostModel;
     private bool? clientOnlyApplied;
     private bool? hostModelVisibleApplied;
+    private int appliedClientUiScreenWidth;
+    private int appliedClientUiScreenHeight;
 
     private void Update()
     {
@@ -37,6 +44,7 @@ public class TestStage1ClientPresentation : MonoBehaviour
     private void ApplyClientOnly(bool isClientOnly)
     {
         EnsureClientUiReference();
+        ApplyClientUiResponsiveScale();
 
         if (clientUi != null && clientUi.activeSelf != isClientOnly)
         {
@@ -87,9 +95,52 @@ public class TestStage1ClientPresentation : MonoBehaviour
             clientUi = FindChildByName(rootObject.transform, ClientUiName);
             if (clientUi != null)
             {
+                clientUiScaler = null;
                 return;
             }
         }
+    }
+
+    private void ApplyClientUiResponsiveScale()
+    {
+        if (clientUi == null || (appliedClientUiScreenWidth == Screen.width && appliedClientUiScreenHeight == Screen.height))
+        {
+            return;
+        }
+
+        if (clientUiScaler == null)
+        {
+            clientUiScaler = clientUi.GetComponentInChildren<CanvasScaler>(true);
+        }
+
+        if (clientUiScaler == null)
+        {
+            return;
+        }
+
+        var isLandscape = Screen.width >= Screen.height;
+
+        if (isLandscape)
+        {
+            clientUiScaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+            clientUiScaler.scaleFactor = Mathf.Min(
+                ClientUiMaxLandscapeScale,
+                Mathf.Min(
+                    Screen.width / ClientUiLandscapeReferenceResolution.x,
+                    Screen.height / ClientUiLandscapeReferenceResolution.y
+                )
+            );
+        }
+        else
+        {
+            clientUiScaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            clientUiScaler.referenceResolution = ClientUiPortraitReferenceResolution;
+            clientUiScaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            clientUiScaler.matchWidthOrHeight = 0.5f;
+        }
+
+        appliedClientUiScreenWidth = Screen.width;
+        appliedClientUiScreenHeight = Screen.height;
     }
 
     private void ApplyHostModelVisible(bool isVisible)

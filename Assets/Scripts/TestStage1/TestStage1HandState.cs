@@ -47,8 +47,14 @@ public static class TestStage1HandState
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetStaticState()
     {
-        Current = new TestStage1PlayerState(false, TestStage1RightHandTool.None, TestStage1ElementPower.None);
+        ResetRuntimeState();
         Changed = null;
+    }
+
+    public static void ResetRuntimeState()
+    {
+        Current = new TestStage1PlayerState(false, TestStage1RightHandTool.None, TestStage1ElementPower.None);
+        Changed?.Invoke(Current);
     }
 
     public static void SetLeftHandSlimeBait(bool hasSlimeBait)

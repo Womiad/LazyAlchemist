@@ -33,8 +33,14 @@ public class TestStage1FireflyCollectionController : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetStaticState()
     {
-        IsCompleted = false;
+        ResetRuntimeState();
         CompletedChanged = null;
+    }
+
+    public static void ResetRuntimeState()
+    {
+        IsCompleted = false;
+        CompletedChanged?.Invoke(IsCompleted);
     }
 
     private void Update()

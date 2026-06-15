@@ -18,7 +18,10 @@ public static class TestStage1Bootstrap
         if (scene.name == SceneName)
         {
             EnsureManagerForActiveScene();
+            return;
         }
+
+        ResetRuntimeState();
     }
 
     private static void EnsureManagerForActiveScene()
@@ -55,6 +58,16 @@ public static class TestStage1Bootstrap
         EnsureComponent<TestStage1SlimeSpawner>(managerObject);
         EnsureComponent<TestStage1SlimeHuntController>(managerObject);
         EnsureComponent<TestStage1CompletionController>(managerObject);
+    }
+
+    public static void ResetRuntimeState()
+    {
+        TestStage1HandState.ResetRuntimeState();
+        TestStage1ItemInventoryController.ResetRuntimeState();
+        TestStage1FireflyCollectionController.ResetRuntimeState();
+        TestStage1WaterCrystalCollectionController.ResetRuntimeState();
+        TestStage1SlimeHuntController.ResetRuntimeState();
+        TestStage1PressFPromptController.ResetRuntimeState();
     }
 
     private static void EnsureComponent<T>(GameObject target) where T : Component

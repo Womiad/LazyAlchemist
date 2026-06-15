@@ -26,9 +26,15 @@ public class TestStage1ItemInventoryController : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetStaticState()
     {
+        ResetRuntimeState();
+        InventoryChanged = null;
+    }
+
+    public static void ResetRuntimeState()
+    {
         HasFirefly = false;
         HasSlimeBait = false;
-        InventoryChanged = null;
+        InventoryChanged?.Invoke();
     }
 
     private void Update()

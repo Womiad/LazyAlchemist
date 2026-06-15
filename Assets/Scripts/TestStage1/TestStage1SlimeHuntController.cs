@@ -24,8 +24,14 @@ public class TestStage1SlimeHuntController : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetStaticState()
     {
-        IsCompleted = false;
+        ResetRuntimeState();
         CompletedChanged = null;
+    }
+
+    public static void ResetRuntimeState()
+    {
+        IsCompleted = false;
+        CompletedChanged?.Invoke(IsCompleted);
     }
 
     private void OnEnable()

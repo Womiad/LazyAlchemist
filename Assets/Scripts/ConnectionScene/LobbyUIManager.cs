@@ -5,6 +5,11 @@ using UnityEngine.UI;
 
 public class LobbyUIManager : MonoBehaviour
 {
+    private static readonly Vector2 ReferenceResolution = new Vector2(1920f, 1080f);
+    private const float MaxUiScaleMultiplier = 1.55f;
+    private const string WoodBackgroundName = "wood";
+    private const string LogoName = "logo";
+
     public GameObject connectionUI;
     public GameObject hostUI;
     public GameObject clientUI;
@@ -18,6 +23,11 @@ public class LobbyUIManager : MonoBehaviour
     private Text hostStartHintText;
     private Text clientStateText;
     private Text clientReadyHintText;
+    private ResponsiveUiBinding connectionUiBinding;
+    private ResponsiveUiBinding lobbyUiBinding;
+    private CoverImageBinding woodBackgroundBinding;
+    private ContainedResponsiveUiBinding logoBinding;
+    private Canvas cachedCanvas;
     private string latestClientAddress;
     private bool hasLocalClientReadyOverride;
     private bool localClientReadyOverride;
@@ -25,11 +35,15 @@ public class LobbyUIManager : MonoBehaviour
     private void Awake()
     {
         ApplyMobileLandscapeOrientation();
+        ConfigureCanvasScaler();
         EnsureConnectionWidgets();
+        EnsureResponsiveBindings();
+        RefreshResponsiveLayout();
     }
 
     private void Update()
     {
+        RefreshResponsiveLayout();
         RefreshLobbyState();
     }
 
@@ -197,6 +211,7 @@ public class LobbyUIManager : MonoBehaviour
 
         SetConnectionHint("Enter the host PC IP on the client device.");
         SetStatus(string.Empty);
+        RefreshResponsiveLayout();
     }
 
     private void EnsureLobbyWidgets()
@@ -262,6 +277,119 @@ public class LobbyUIManager : MonoBehaviour
                 new Color32(255, 205, 90, 255)
             );
         }
+
+        RefreshResponsiveLayout();
+    }
+
+    private void ConfigureCanvasScaler()
+    {
+        var canvas = GetUiCanvas();
+        var canvasScaler = canvas == null ? null : canvas.GetComponent<CanvasScaler>();
+        if (canvasScaler == null)
+        {
+            return;
+        }
+
+        canvasScaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+        canvasScaler.scaleFactor = 1f;
+    }
+
+    private void EnsureResponsiveBindings()
+    {
+        var canvas = GetUiCanvas();
+
+        if (connectionUiBinding == null && connectionUI != null)
+        {
+            connectionUiBinding = ResponsiveUiBinding.TryCreate(connectionUI.transform);
+        }
+
+        if (lobbyUiBinding == null)
+        {
+            var lobbyRoot = hostUI != null && hostUI.transform.parent != null
+                ? hostUI.transform.parent
+                : clientUI != null ? clientUI.transform.parent : null;
+            lobbyUiBinding = ResponsiveUiBinding.TryCreate(lobbyRoot);
+        }
+
+        if (woodBackgroundBinding == null)
+        {
+            woodBackgroundBinding = CoverImageBinding.TryCreate(FindDirectCanvasChild(canvas, WoodBackgroundName));
+        }
+
+        if (logoBinding == null)
+        {
+            logoBinding = ContainedResponsiveUiBinding.TryCreate(FindDirectCanvasChild(canvas, LogoName));
+        }
+    }
+
+    private void RefreshResponsiveLayout()
+    {
+        EnsureResponsiveBindings();
+
+        var rootSize = GetCanvasSize();
+        if (rootSize.x <= 0f || rootSize.y <= 0f)
+        {
+            return;
+        }
+
+        var scaleMultiplier = Mathf.Min(rootSize.x / ReferenceResolution.x, rootSize.y / ReferenceResolution.y);
+        scaleMultiplier = Mathf.Clamp(scaleMultiplier, 0.45f, MaxUiScaleMultiplier);
+
+        woodBackgroundBinding?.Apply(rootSize);
+        logoBinding?.Apply(scaleMultiplier, rootSize);
+        connectionUiBinding?.Apply(scaleMultiplier);
+        lobbyUiBinding?.Apply(scaleMultiplier);
+    }
+
+    private Vector2 GetCanvasSize()
+    {
+        var canvas = GetUiCanvas();
+        var canvasRect = canvas == null ? null : canvas.GetComponent<RectTransform>();
+        if (canvasRect != null)
+        {
+            return canvasRect.rect.size;
+        }
+
+        return new Vector2(Screen.width, Screen.height);
+    }
+
+    private Canvas GetUiCanvas()
+    {
+        if (cachedCanvas != null)
+        {
+            return cachedCanvas;
+        }
+
+        cachedCanvas = FindCanvasFromObject(connectionUI)
+            ?? FindCanvasFromObject(hostUI)
+            ?? FindCanvasFromObject(clientUI)
+            ?? FindFirstObjectByType<Canvas>();
+        return cachedCanvas;
+    }
+
+    private static Canvas FindCanvasFromObject(GameObject target)
+    {
+        return target == null ? null : target.GetComponentInParent<Canvas>(true);
+    }
+
+    private static Transform FindDirectCanvasChild(Canvas canvas, string childName)
+    {
+        if (canvas == null)
+        {
+            return null;
+        }
+
+        var canvasTransform = canvas.transform;
+        for (var i = 0; i < canvasTransform.childCount; i++)
+        {
+            var child = canvasTransform.GetChild(i);
+            if (child != null && child.name == childName)
+            {
+                return child;
+            }
+        }
+
+        return null;
     }
 
     private void RefreshLobbyState()
@@ -499,5 +627,144 @@ public class LobbyUIManager : MonoBehaviour
         text.color = color;
         text.supportRichText = false;
         return text;
+    }
+
+    private sealed class ResponsiveUiBinding
+    {
+        private readonly RectTransform rectTransform;
+        private readonly Vector3 baseScale;
+        private readonly Vector2 baseAnchoredPosition;
+        private float lastScaleMultiplier = -1f;
+
+        private ResponsiveUiBinding(RectTransform rectTransform)
+        {
+            this.rectTransform = rectTransform;
+            baseScale = rectTransform.localScale;
+            baseAnchoredPosition = rectTransform.anchoredPosition;
+        }
+
+        public static ResponsiveUiBinding TryCreate(Transform target)
+        {
+            var rectTransform = target as RectTransform;
+            return rectTransform == null ? null : new ResponsiveUiBinding(rectTransform);
+        }
+
+        public void Apply(float scaleMultiplier)
+        {
+            if (rectTransform == null || Mathf.Approximately(lastScaleMultiplier, scaleMultiplier))
+            {
+                return;
+            }
+
+            lastScaleMultiplier = scaleMultiplier;
+            rectTransform.localScale = baseScale * scaleMultiplier;
+            rectTransform.anchoredPosition = baseAnchoredPosition * scaleMultiplier;
+        }
+    }
+
+    private sealed class CoverImageBinding
+    {
+        private readonly RectTransform rectTransform;
+        private readonly Vector2 baseSize;
+        private Vector2 lastRootSize;
+
+        private CoverImageBinding(RectTransform rectTransform)
+        {
+            this.rectTransform = rectTransform;
+            baseSize = rectTransform.sizeDelta;
+        }
+
+        public static CoverImageBinding TryCreate(Transform target)
+        {
+            var rectTransform = target as RectTransform;
+            return rectTransform == null ? null : new CoverImageBinding(rectTransform);
+        }
+
+        public void Apply(Vector2 rootSize)
+        {
+            if (rectTransform == null || rootSize == lastRootSize || baseSize.x <= 0f || baseSize.y <= 0f)
+            {
+                return;
+            }
+
+            lastRootSize = rootSize;
+            var scale = Mathf.Max(rootSize.x / baseSize.x, rootSize.y / baseSize.y);
+            rectTransform.localScale = Vector3.one;
+            rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+            rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            rectTransform.anchoredPosition = Vector2.zero;
+            rectTransform.sizeDelta = baseSize * scale;
+        }
+    }
+
+    private sealed class ContainedResponsiveUiBinding
+    {
+        private const float EdgePadding = 64f;
+        private const float MaxScreenWidthRatio = 0.7f;
+        private const float MaxScreenHeightRatio = 0.52f;
+
+        private readonly RectTransform rectTransform;
+        private readonly Vector3 baseScale;
+        private readonly Vector2 baseAnchoredPosition;
+        private readonly Vector2 baseSize;
+        private float lastAppliedScale = -1f;
+        private Vector2 lastRootSize;
+
+        private ContainedResponsiveUiBinding(RectTransform rectTransform)
+        {
+            this.rectTransform = rectTransform;
+            baseScale = rectTransform.localScale;
+            baseAnchoredPosition = rectTransform.anchoredPosition;
+            baseSize = rectTransform.sizeDelta;
+        }
+
+        public static ContainedResponsiveUiBinding TryCreate(Transform target)
+        {
+            var rectTransform = target as RectTransform;
+            return rectTransform == null ? null : new ContainedResponsiveUiBinding(rectTransform);
+        }
+
+        public void Apply(float scaleMultiplier, Vector2 rootSize)
+        {
+            if (rectTransform == null || rootSize.x <= 0f || rootSize.y <= 0f)
+            {
+                return;
+            }
+
+            var containedScaleMultiplier = GetContainedScaleMultiplier(scaleMultiplier, rootSize);
+            if (Mathf.Approximately(lastAppliedScale, containedScaleMultiplier) && rootSize == lastRootSize)
+            {
+                return;
+            }
+
+            lastAppliedScale = containedScaleMultiplier;
+            lastRootSize = rootSize;
+            rectTransform.localScale = baseScale * containedScaleMultiplier;
+            rectTransform.anchoredPosition = baseAnchoredPosition * containedScaleMultiplier;
+        }
+
+        private float GetContainedScaleMultiplier(float requestedScaleMultiplier, Vector2 rootSize)
+        {
+            var basePixelSize = new Vector2(
+                Mathf.Abs(baseSize.x * baseScale.x),
+                Mathf.Abs(baseSize.y * baseScale.y)
+            );
+
+            var maxScaleX = GetAxisScaleLimit(rootSize.x, basePixelSize.x, Mathf.Abs(baseAnchoredPosition.x));
+            var maxScaleY = GetAxisScaleLimit(rootSize.y, basePixelSize.y, Mathf.Abs(baseAnchoredPosition.y));
+            var maxSizeScaleX = rootSize.x * MaxScreenWidthRatio / basePixelSize.x;
+            var maxSizeScaleY = rootSize.y * MaxScreenHeightRatio / basePixelSize.y;
+            return Mathf.Min(requestedScaleMultiplier, maxScaleX, maxScaleY, maxSizeScaleX, maxSizeScaleY);
+        }
+
+        private static float GetAxisScaleLimit(float rootLength, float baseLength, float baseCenterOffset)
+        {
+            var halfAvailableLength = Mathf.Max(1f, rootLength * 0.5f - EdgePadding);
+            var baseHalfExtentFromCenter = baseCenterOffset + baseLength * 0.5f;
+            return baseHalfExtentFromCenter <= 0f
+                ? 1f
+                : Mathf.Max(0.01f, halfAvailableLength / baseHalfExtentFromCenter);
+        }
     }
 }
