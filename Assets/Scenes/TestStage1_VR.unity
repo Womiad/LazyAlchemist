@@ -1582,6 +1582,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Folding_Ladder
       objectReference: {fileID: 0}
+    - target: {fileID: 8838109342219632630, guid: af11ffc6d3728d04f8f229c2ad869ae5, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -17352,6 +17356,10 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 89408ea1e8e8f8d4d9d81f31489c6abf, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 531747189496562493, guid: 89408ea1e8e8f8d4d9d81f31489c6abf, type: 3}
+      propertyPath: m_Enabled
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 89408ea1e8e8f8d4d9d81f31489c6abf, type: 3}
