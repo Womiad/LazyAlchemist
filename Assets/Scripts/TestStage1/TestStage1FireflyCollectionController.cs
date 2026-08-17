@@ -54,7 +54,7 @@ public class TestStage1FireflyCollectionController : MonoBehaviour
 
         RefreshPrompt();
 
-        if (CanHostCollect() && Input.GetKeyDown(KeyCode.F))
+        if (CanHostCollect() && (Input.GetKeyDown(KeyCode.F) || TestStage1VRInput.CollectPressedThisFrame))
         {
             CollectFirefly();
         }
@@ -104,8 +104,7 @@ public class TestStage1FireflyCollectionController : MonoBehaviour
     {
         return initialized
             && !fireflyCollected
-            && NetworkManager.Singleton != null
-            && NetworkManager.Singleton.IsServer
+            && TestStage1DebugMode.IsServer
             && TestStage1HandState.RightHandTool == TestStage1RightHandTool.None
             && sceneFirefly != null
             && sceneFirefly.activeInHierarchy

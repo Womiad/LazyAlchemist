@@ -38,6 +38,12 @@ public class TestStage1HandStateSync : MonoBehaviour
 
     public static void RequestHostLeftHandSlimeBait(bool hasSlimeBait)
     {
+        if (TestStage1DebugMode.IsEnabled)
+        {
+            ApplyLeftHandSlimeBaitToActiveController(hasSlimeBait);
+            return;
+        }
+
         if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsClient)
         {
             ApplyLeftHandSlimeBaitToActiveController(hasSlimeBait);

@@ -1353,7 +1353,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HostStartGameUI
   uiManager: {fileID: 0}
-  sceneToLoad: TestStage1
+  sceneToLoad: TestStage1_VR
 --- !u!1 &1598296664
 GameObject:
   m_ObjectHideFlags: 0

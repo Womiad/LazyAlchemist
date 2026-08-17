@@ -17,6 +17,11 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/TestStage1.unity
     guid: 7af78ca4d118912499ae391869a85d3c
+  - enabled: 1
+    path: Assets/Scenes/TestStage1_VR.unity
+    guid: d1f436e50eeb5fc4998eac9501441719
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+    com.unity.xr.management.loader_settings: {fileID: 11400000, guid: 42862ecd36342df44a48c8f26f6e14b5, type: 2}
+    com.unity.xr.openxr.settings4: {fileID: 11400000, guid: ee1d2c81e1e20ac4c971e84435738ff0, type: 2}
   m_UseUCBPForAssetBundles: 0

@@ -5,7 +5,7 @@ using UnityEngine.SceneManagement;
 public class HostStartGameUI : MonoBehaviour
 {
     [SerializeField] private LobbyUIManager uiManager;
-    public string sceneToLoad = "TestStage1";
+    public string sceneToLoad = "TestStage1_VR";
 
     public void OnClickStartGame()
     {

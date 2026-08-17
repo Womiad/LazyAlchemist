@@ -49,6 +49,12 @@ public class TestStage1Tool3DController : MonoBehaviour
 
     private static void RequestHostTool(TestStage1RightHandTool tool)
     {
+        if (TestStage1DebugMode.IsEnabled)
+        {
+            ApplyToolToActiveController(tool);
+            return;
+        }
+
         if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsClient)
         {
             return;

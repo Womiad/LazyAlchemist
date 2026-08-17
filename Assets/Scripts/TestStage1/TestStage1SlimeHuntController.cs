@@ -87,6 +87,11 @@ public class TestStage1SlimeHuntController : MonoBehaviour
 
     private static bool ShouldHostCountDefeat()
     {
+        if (TestStage1DebugMode.IsEnabled)
+        {
+            return TestStage1DebugMode.IsServer;
+        }
+
         return NetworkManager.Singleton == null
             || !NetworkManager.Singleton.IsListening
             || NetworkManager.Singleton.IsServer;

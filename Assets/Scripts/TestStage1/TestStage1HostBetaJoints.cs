@@ -144,6 +144,6 @@ public class TestStage1HostBetaJoints : MonoBehaviour
 
     private static bool IsHost()
     {
-        return NetworkManager.Singleton != null && NetworkManager.Singleton.IsHost;
+        return TestStage1DebugMode.IsHost;
     }
 }

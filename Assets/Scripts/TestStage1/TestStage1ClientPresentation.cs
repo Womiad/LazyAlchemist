@@ -24,6 +24,20 @@ public class TestStage1ClientPresentation : MonoBehaviour
 
     private void Update()
     {
+        if (TestStage1DebugMode.IsHost)
+        {
+            ApplyClientOnly(false);
+            ApplyHostModelVisible(true);
+            return;
+        }
+
+        if (TestStage1DebugMode.IsClientOnly)
+        {
+            ApplyClientOnly(true);
+            ApplyHostModelVisible(false);
+            return;
+        }
+
         if (NetworkManager.Singleton == null)
         {
             ApplyClientOnly(false);

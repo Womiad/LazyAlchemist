@@ -22,6 +22,15 @@ public class TestStage1UI : MonoBehaviour
 
     private void EnsureUi()
     {
+        if (TestStage1DebugMode.IsEnabled)
+        {
+            if (TestStage1DebugMode.IsClientOnly)
+            {
+                ApplyMobileClientOrientationIfNeeded();
+            }
+            return;
+        }
+
         if (NetworkManager.Singleton == null)
         {
             return;
@@ -39,9 +48,10 @@ public class TestStage1UI : MonoBehaviour
     {
         if (mobileLandscapeApplied
             || !Application.isMobilePlatform
-            || NetworkManager.Singleton == null
-            || !NetworkManager.Singleton.IsClient
-            || NetworkManager.Singleton.IsHost)
+            || (!TestStage1DebugMode.IsClientOnly
+                && (NetworkManager.Singleton == null
+                    || !NetworkManager.Singleton.IsClient
+                    || NetworkManager.Singleton.IsHost)))
         {
             return;
         }
@@ -56,6 +66,13 @@ public class TestStage1UI : MonoBehaviour
 
     public static void RequestHostPresetColor(byte colorIndex)
     {
+        if (TestStage1DebugMode.IsEnabled)
+        {
+            TestStage1HandState.SetElementPower(TestStage1HandState.ElementFromColorIndex(colorIndex));
+            TestStage1HostBetaJoints.Instance?.ApplyPresetColor(colorIndex);
+            return;
+        }
+
         if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsClient)
         {
             return;

@@ -52,7 +52,7 @@ public class TestStage1WaterCrystalCollectionController : MonoBehaviour
 
         RefreshPrompt();
 
-        if (CanHostCollect() && Input.GetKeyDown(KeyCode.F))
+        if (CanHostCollect() && (Input.GetKeyDown(KeyCode.F) || TestStage1VRInput.CollectPressedThisFrame))
         {
             CollectWaterCrystal();
         }
@@ -96,8 +96,7 @@ public class TestStage1WaterCrystalCollectionController : MonoBehaviour
     {
         return initialized
             && !waterCrystalCollected
-            && NetworkManager.Singleton != null
-            && NetworkManager.Singleton.IsServer
+            && TestStage1DebugMode.IsServer
             && TestStage1HandState.RightHandTool == TestStage1RightHandTool.Pickaxe
             && TestStage1HandState.ElementPower == TestStage1ElementPower.Wind
             && waterCrystal != null

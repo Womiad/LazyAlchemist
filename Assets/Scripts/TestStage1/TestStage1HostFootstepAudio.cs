@@ -56,6 +56,11 @@ public class TestStage1HostFootstepAudio : MonoBehaviour
 
     private bool HasMovementInput()
     {
+        if (GetComponent<TestStage1VRHostController>() != null)
+        {
+            return TestStage1VRHostController.MoveAxis.sqrMagnitude > inputThreshold * inputThreshold;
+        }
+
         if (hostInput == null)
         {
             return Input.GetAxisRaw("Horizontal") * Input.GetAxisRaw("Horizontal")
@@ -121,6 +126,6 @@ public class TestStage1HostFootstepAudio : MonoBehaviour
 
     private static bool IsHost()
     {
-        return NetworkManager.Singleton != null && NetworkManager.Singleton.IsHost;
+        return TestStage1DebugMode.IsHost;
     }
 }

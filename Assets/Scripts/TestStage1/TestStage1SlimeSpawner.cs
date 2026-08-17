@@ -49,6 +49,11 @@ public class TestStage1SlimeSpawner : MonoBehaviour
 
     private bool ShouldRunSpawner()
     {
+        if (TestStage1DebugMode.IsEnabled)
+        {
+            return TestStage1DebugMode.IsServer;
+        }
+
         return NetworkManager.Singleton == null
             || !NetworkManager.Singleton.IsListening
             || NetworkManager.Singleton.IsServer;

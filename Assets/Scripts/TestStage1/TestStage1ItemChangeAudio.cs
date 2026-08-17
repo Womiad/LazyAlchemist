@@ -45,7 +45,8 @@ public class TestStage1ItemChangeAudio : MonoBehaviour
 
     private static bool ShouldPlayForLocalPlayer()
     {
-        return NetworkManager.Singleton == null
+        return TestStage1DebugMode.IsEnabled
+            || NetworkManager.Singleton == null
             || NetworkManager.Singleton.IsHost
             || (NetworkManager.Singleton.IsClient && !NetworkManager.Singleton.IsServer);
     }

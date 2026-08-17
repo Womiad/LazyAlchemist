@@ -63,7 +63,7 @@ public class TestStage1StaffMagicAttackController : MonoBehaviour
             TryInitialize();
         }
 
-        if (CanHostAttack() && Input.GetMouseButtonDown(0))
+        if (CanHostAttack() && (Input.GetMouseButtonDown(0) || TestStage1VRInput.AttackPressedThisFrame))
         {
             PlayAttack(TestStage1HandState.ElementPower, true);
         }
@@ -107,6 +107,13 @@ public class TestStage1StaffMagicAttackController : MonoBehaviour
 
     private bool CanHostAttack()
     {
+        if (TestStage1DebugMode.IsEnabled)
+        {
+            return TestStage1DebugMode.IsHost
+                && TestStage1HandState.RightHandTool == TestStage1RightHandTool.Staff
+                && !IsPointerOverUi();
+        }
+
         if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsHost)
         {
             return false;
@@ -140,6 +147,11 @@ public class TestStage1StaffMagicAttackController : MonoBehaviour
 
     private void PlayHostAttackAudio(TestStage1ElementPower element)
     {
+        if (TestStage1DebugMode.IsEnabled && !TestStage1DebugMode.IsHost)
+        {
+            return;
+        }
+
         if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsHost)
         {
             return;

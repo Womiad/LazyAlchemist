@@ -1,9 +1,12 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Unity.Netcode;
+using Invector.vCharacterController;
 
 public static class TestStage1Bootstrap
 {
     private const string SceneName = "TestStage1";
+    private const string VrSceneName = "TestStage1_VR";
     private const string ManagerName = "TestStage1Manager";
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -15,7 +18,7 @@ public static class TestStage1Bootstrap
 
     private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        if (scene.name == SceneName)
+        if (IsStageScene(scene.name))
         {
             EnsureManagerForActiveScene();
             return;
@@ -26,7 +29,8 @@ public static class TestStage1Bootstrap
 
     private static void EnsureManagerForActiveScene()
     {
-        if (SceneManager.GetActiveScene().name != SceneName)
+        var activeSceneName = SceneManager.GetActiveScene().name;
+        if (!IsStageScene(activeSceneName))
         {
             return;
         }
@@ -58,6 +62,17 @@ public static class TestStage1Bootstrap
         EnsureComponent<TestStage1SlimeSpawner>(managerObject);
         EnsureComponent<TestStage1SlimeHuntController>(managerObject);
         EnsureComponent<TestStage1CompletionController>(managerObject);
+
+        if (TestStage1DebugMode.IsEnabled)
+        {
+            EnsureComponent<TestStage1DebugHostControls>(managerObject);
+        }
+
+        if (activeSceneName == VrSceneName)
+        {
+            EnsureComponent<TestStage1VRColliderOptimizer>(managerObject);
+            ConfigureVrHost();
+        }
     }
 
     public static void ResetRuntimeState()
@@ -75,6 +90,39 @@ public static class TestStage1Bootstrap
         if (target.GetComponent<T>() == null)
         {
             target.AddComponent<T>();
+        }
+    }
+
+    private static bool IsStageScene(string sceneName)
+    {
+        return sceneName == SceneName || sceneName == VrSceneName;
+    }
+
+    private static void ConfigureVrHost()
+    {
+        var hostRoot = GameObject.Find("Host3D");
+        var player = hostRoot == null
+            ? null
+            : hostRoot.GetComponentInChildren<vThirdPersonController>(true);
+
+        if (player == null)
+        {
+            Debug.LogWarning("TestStage1 VR could not find the Host3D player controller.");
+            return;
+        }
+
+        var isHost = TestStage1DebugMode.IsHost;
+        foreach (var input in player.GetComponents<vThirdPersonInput>())
+        {
+            if (input is not TestStage1VRHostController)
+            {
+                input.enabled = false;
+            }
+        }
+
+        if (isHost && player.GetComponent<TestStage1VRHostController>() == null)
+        {
+            player.gameObject.AddComponent<TestStage1VRHostController>();
         }
     }
 }

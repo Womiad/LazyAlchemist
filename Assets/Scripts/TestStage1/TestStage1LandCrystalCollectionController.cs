@@ -30,7 +30,7 @@ public class TestStage1LandCrystalCollectionController : MonoBehaviour
 
         RefreshPrompt();
 
-        if (CanHostCollect() && Input.GetKeyDown(KeyCode.F))
+        if (CanHostCollect() && (Input.GetKeyDown(KeyCode.F) || TestStage1VRInput.CollectPressedThisFrame))
         {
             CollectLandCrystal();
         }
@@ -68,8 +68,7 @@ public class TestStage1LandCrystalCollectionController : MonoBehaviour
     {
         return initialized
             && !landCrystalCollected
-            && NetworkManager.Singleton != null
-            && NetworkManager.Singleton.IsServer
+            && TestStage1DebugMode.IsServer
             && TestStage1HandState.RightHandTool == TestStage1RightHandTool.Pickaxe
             && TestStage1HandState.ElementPower == TestStage1ElementPower.Fire
             && landCrystal != null
