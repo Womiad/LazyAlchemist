@@ -4,6 +4,7 @@ using UnityEngine.SceneManagement;
 
 public class StartGameButton : MonoBehaviour
 {
+    public string gameSceneName = "GameScene";
     public void OnClickStart()
     {
         if (LobbyManager.Instance.CanStartGame())

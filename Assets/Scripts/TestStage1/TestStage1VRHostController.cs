@@ -11,6 +11,10 @@ using UnityEngine.XR;
 public sealed class TestStage1VRHostController : vThirdPersonInput
 {
     private const float CameraFallbackHeight = 1.65f;
+    private const float DefaultEyeOffsetFromHeadBone = 0.1f;
+    private const float MoveDeadZone = 0.15f;
+    private const float MinimumValidFloorTrackedHeadHeight = 0.35f;
+    private const int RequiredTrackingCalibrationSamples = 5;
     private const float SnapTurnAngle = 30f;
     private const float SnapTurnThreshold = 0.75f;
     private const float TeleportAimThreshold = 0.55f;
@@ -25,7 +29,11 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
     private static readonly float[] TeleportClearanceHeights = { 0.25f, 0.9f, 1.55f };
 
     private Camera vrCamera;
+    private Animator avatarAnimator;
+    private Transform leftHandRoot;
     private Transform rightHandRoot;
+    private Transform avatarHead;
+    private readonly Dictionary<Transform, Quaternion> fingerRestRotations = new Dictionary<Transform, Quaternion>();
     private LineRenderer teleportArc;
     private Transform teleportMarker;
     private Material teleportMaterial;
@@ -33,13 +41,29 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
     private bool isTeleportAiming;
     private bool hasValidTeleportTarget;
     private bool hasCalibratedHeadsetPosition;
+    private int validTrackingCalibrationSamples;
+    private Vector3 pendingHeadsetCalibrationPosition;
     private Vector3 headsetPositionAtCalibration;
     private Vector3 teleportTarget;
     private Vector3 teleportTargetNormal = Vector3.up;
+    private Vector3 calibratedAvatarEyeLocalPosition = Vector3.up * CameraFallbackHeight;
+    private Vector3 avatarEyeToBodyOffset;
     private readonly Vector3[] teleportArcPositions = new Vector3[TeleportArcSegments + 1];
     private readonly RaycastHit[] teleportHits = new RaycastHit[16];
 
     public static Vector2 MoveAxis { get; private set; }
+
+    [Header("VR Avatar")]
+    [SerializeField, Range(0f, 1f)] private float handIkWeight = 1f;
+    [SerializeField] private Vector3 leftHandRotationOffset = new Vector3(0f, 0f, 90f);
+    [SerializeField] private Vector3 rightHandRotationOffset = new Vector3(0f, 0f, -90f);
+    [SerializeField, Min(1f)] private float movementSpeedMultiplier = 1.6f;
+    [SerializeField, Range(1.2f, 2f)] private float playerEyeHeight = 1.8f;
+    [SerializeField] private float eyeOffsetFromHeadBone = DefaultEyeOffsetFromHeadBone;
+    [SerializeField, Range(0f, 0.5f)] private float bodyBackwardOffset = 0.18f;
+    [SerializeField, Range(0f, 90f)] private float fingerCurlAngle = 65f;
+    [SerializeField, Range(0f, 60f)] private float thumbCurlAngle = 35f;
+    [SerializeField, Range(0f, 60f)] private float thumbOppositionAngle = 28f;
 
     protected override void InitializeTpCamera()
     {
@@ -50,21 +74,24 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
             return;
         }
 
+        avatarAnimator = GetComponent<Animator>();
+        CalibrateAvatarEyeHeight();
+        CacheFingerRestPose();
+        IncreaseVrMovementSpeed();
+
         vrCamera = tpCamera.GetComponent<Camera>();
         tpCamera.enabled = false;
 
         vrCamera.transform.SetParent(transform, false);
-        vrCamera.transform.localPosition = Vector3.up * CameraFallbackHeight;
+        vrCamera.transform.localPosition = calibratedAvatarEyeLocalPosition;
         vrCamera.transform.localRotation = Quaternion.identity;
         vrCamera.nearClipPlane = 0.03f;
-        vrCamera.stereoTargetEye = StereoTargetEyeMask.Both;
 
         cameraMain = vrCamera;
         cc.rotateTarget = vrCamera.transform;
-
         SetFloorTrackingOrigin();
-        HideLocalPlayerBody();
-        CreateRightControllerTrackingAnchor();
+        PrepareFirstPersonAvatar();
+        CreateControllerTrackingAnchors();
         CreateTeleportVisuals();
     }
 
@@ -75,11 +102,29 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
         TeleportInput();
     }
 
+    protected override void FixedUpdate()
+    {
+        // VR locomotion is camera-relative, but the left stick must never rotate the avatar.
+        cc.UpdateMotor();
+        cc.ControlLocomotionType();
+    }
+
     public override void MoveInput()
     {
-        MoveAxis = Vector2.zero;
-        cc.input.x = 0f;
-        cc.input.z = 0f;
+        var leftController = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
+        if (!leftController.TryGetFeatureValue(CommonUsages.primary2DAxis, out var moveAxis))
+        {
+            moveAxis = Vector2.zero;
+        }
+
+        if (moveAxis.magnitude < MoveDeadZone)
+        {
+            moveAxis = Vector2.zero;
+        }
+
+        MoveAxis = Vector2.ClampMagnitude(moveAxis, 1f);
+        cc.input.x = MoveAxis.x;
+        cc.input.z = MoveAxis.y;
     }
 
     protected override void CameraInput()
@@ -130,21 +175,40 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
 
         if (hasPosition)
         {
-            if (!hasCalibratedHeadsetPosition)
+            if (!hasCalibratedHeadsetPosition && localPosition.y >= MinimumValidFloorTrackedHeadHeight)
             {
-                headsetPositionAtCalibration = localPosition;
-                hasCalibratedHeadsetPosition = true;
+                if (validTrackingCalibrationSamples == 0
+                    || Mathf.Abs(localPosition.y - pendingHeadsetCalibrationPosition.y) > 0.15f)
+                {
+                    pendingHeadsetCalibrationPosition = localPosition;
+                    validTrackingCalibrationSamples = 1;
+                }
+                else
+                {
+                    pendingHeadsetCalibrationPosition = Vector3.Lerp(
+                        pendingHeadsetCalibrationPosition,
+                        localPosition,
+                        0.5f);
+                    validTrackingCalibrationSamples++;
+                }
+
+                if (validTrackingCalibrationSamples >= RequiredTrackingCalibrationSamples)
+                {
+                    headsetPositionAtCalibration = pendingHeadsetCalibrationPosition;
+                    hasCalibratedHeadsetPosition = true;
+                }
             }
 
-            var roomScaleOffset = localPosition - headsetPositionAtCalibration;
-            vrCamera.transform.localPosition = new Vector3(
-                roomScaleOffset.x,
-                CameraFallbackHeight + roomScaleOffset.y,
-                roomScaleOffset.z);
+            // OpenXR can report (0,0,0) for several startup frames before the floor
+            // tracking origin is ready. Never add that transition to the avatar eye height.
+            var roomScaleOffset = hasCalibratedHeadsetPosition
+                ? localPosition - headsetPositionAtCalibration
+                : Vector3.zero;
+            vrCamera.transform.localPosition = calibratedAvatarEyeLocalPosition + roomScaleOffset;
         }
         else
         {
-            vrCamera.transform.localPosition = Vector3.up * CameraFallbackHeight;
+            vrCamera.transform.localPosition = calibratedAvatarEyeLocalPosition;
         }
 
         if (hasRotation)
@@ -152,7 +216,10 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
             vrCamera.transform.localRotation = localRotation;
         }
 
+        UpdateTrackedHand(XRNode.LeftHand, leftHandRoot);
         UpdateTrackedHand(XRNode.RightHand, rightHandRoot);
+        UpdateFingerPose(XRNode.LeftHand, true);
+        UpdateFingerPose(XRNode.RightHand, false);
 
         if (isTeleportAiming)
         {
@@ -365,11 +432,85 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
         }
     }
 
-    private void CreateRightControllerTrackingAnchor()
+    private void CreateControllerTrackingAnchors()
     {
+        leftHandRoot = new GameObject("VRLeftControllerTrackingAnchor").transform;
+        leftHandRoot.SetParent(transform, false);
+        leftHandRoot.gameObject.SetActive(false);
+
         rightHandRoot = new GameObject("VRRightControllerTrackingAnchor").transform;
         rightHandRoot.SetParent(transform, false);
         rightHandRoot.gameObject.SetActive(false);
+    }
+
+    private void OnAnimatorIK(int layerIndex)
+    {
+        if (avatarAnimator == null)
+        {
+            return;
+        }
+
+        AlignAvatarBodyToHeadset();
+        ApplyHandIk(AvatarIKGoal.LeftHand, AvatarIKHint.LeftElbow, leftHandRoot, leftHandRotationOffset, -1f);
+        ApplyHandIk(AvatarIKGoal.RightHand, AvatarIKHint.RightElbow, rightHandRoot, rightHandRotationOffset, 1f);
+    }
+
+    private void AlignAvatarBodyToHeadset()
+    {
+        if (vrCamera == null)
+        {
+            return;
+        }
+
+        // Keep the hips beneath the player's real-world headset offset while preserving
+        // the locomotion animation's vertical motion. Hands are solved afterwards, so
+        // this body correction does not pull them away from the tracked controllers.
+        Vector3 viewForward = Vector3.ProjectOnPlane(vrCamera.transform.forward, Vector3.up);
+        if (viewForward.sqrMagnitude > 0.001f)
+        {
+            Quaternion targetBodyRotation = Quaternion.LookRotation(viewForward.normalized, Vector3.up);
+            avatarAnimator.bodyRotation = targetBodyRotation;
+
+            // Animator.bodyPosition is the humanoid mass center, not the hips or feet.
+            // Driving its Y from the camera sinks this particular avatar below ground,
+            // so preserve the locomotion animation's grounded vertical position.
+            Vector3 desiredBodyPosition = vrCamera.transform.position
+                - targetBodyRotation * avatarEyeToBodyOffset;
+            desiredBodyPosition -= viewForward.normalized * bodyBackwardOffset;
+            Vector3 groundedBodyPosition = avatarAnimator.bodyPosition;
+            groundedBodyPosition.x = desiredBodyPosition.x;
+            groundedBodyPosition.z = desiredBodyPosition.z;
+            avatarAnimator.bodyPosition = groundedBodyPosition;
+        }
+    }
+
+    private void ApplyHandIk(
+        AvatarIKGoal goal,
+        AvatarIKHint hint,
+        Transform trackingTarget,
+        Vector3 rotationOffset,
+        float side)
+    {
+        bool tracked = trackingTarget != null && trackingTarget.gameObject.activeSelf;
+        float weight = tracked ? handIkWeight : 0f;
+        avatarAnimator.SetIKPositionWeight(goal, weight);
+        avatarAnimator.SetIKRotationWeight(goal, weight);
+        avatarAnimator.SetIKHintPositionWeight(hint, weight);
+
+        if (!tracked)
+        {
+            return;
+        }
+
+        avatarAnimator.SetIKPosition(goal, trackingTarget.position);
+        avatarAnimator.SetIKRotation(goal, trackingTarget.rotation * Quaternion.Euler(rotationOffset));
+
+        // Keep the elbows outside the torso so the humanoid solver bends naturally.
+        Vector3 elbowHint = trackingTarget.position
+            + transform.right * (0.35f * side)
+            + transform.up * -0.18f
+            + transform.forward * -0.08f;
+        avatarAnimator.SetIKHintPosition(hint, elbowHint);
     }
 
     private void UpdateTrackedHand(XRNode node, Transform handRoot)
@@ -391,9 +532,168 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
         }
 
         Vector3 trackingOffset = localPosition - headsetPositionAtCalibration;
-        handRoot.localPosition = trackingOffset + Vector3.up * CameraFallbackHeight;
+        handRoot.localPosition = trackingOffset + calibratedAvatarEyeLocalPosition;
         handRoot.localRotation = localRotation;
     }
+
+    private void CalibrateAvatarEyeHeight()
+    {
+        if (avatarAnimator == null || !avatarAnimator.isHuman)
+        {
+            calibratedAvatarEyeLocalPosition = Vector3.up * CameraFallbackHeight;
+            return;
+        }
+
+        avatarHead = avatarAnimator.GetBoneTransform(HumanBodyBones.Head);
+        if (avatarHead == null)
+        {
+            calibratedAvatarEyeLocalPosition = Vector3.up * CameraFallbackHeight;
+            return;
+        }
+
+        Vector3 eyePosition = avatarHead.position + avatarHead.up * eyeOffsetFromHeadBone;
+        calibratedAvatarEyeLocalPosition = transform.InverseTransformPoint(eyePosition);
+        // The imported avatar is nearly 1.92 m tall and its head bone can exceed two
+        // metres in some animation poses. Camera height belongs to the VR player, not
+        // to that animated bone, so only use the bone for its fore/aft eye placement.
+        calibratedAvatarEyeLocalPosition.y = playerEyeHeight;
+        eyePosition = transform.TransformPoint(calibratedAvatarEyeLocalPosition);
+        avatarEyeToBodyOffset = Quaternion.Inverse(avatarAnimator.bodyRotation)
+            * (eyePosition - avatarAnimator.bodyPosition);
+    }
+
+    private void IncreaseVrMovementSpeed()
+    {
+        if (cc == null)
+        {
+            return;
+        }
+
+        MultiplyMovementSpeed(cc.freeSpeed, movementSpeedMultiplier);
+        MultiplyMovementSpeed(cc.strafeSpeed, movementSpeedMultiplier);
+    }
+
+    private static void MultiplyMovementSpeed(vThirdPersonMotor.vMovementSpeed speed, float multiplier)
+    {
+        speed.walkSpeed *= multiplier;
+        speed.runningSpeed *= multiplier;
+        speed.sprintSpeed *= multiplier;
+    }
+
+    private void CacheFingerRestPose()
+    {
+        if (avatarAnimator == null || !avatarAnimator.isHuman)
+        {
+            return;
+        }
+
+        CacheFingerRestPose(LeftThumbBones);
+        CacheFingerRestPose(RightThumbBones);
+        CacheFingerRestPose(LeftIndexBones);
+        CacheFingerRestPose(RightIndexBones);
+        CacheFingerRestPose(LeftGripBones);
+        CacheFingerRestPose(RightGripBones);
+    }
+
+    private void CacheFingerRestPose(HumanBodyBones[] bones)
+    {
+        foreach (HumanBodyBones bone in bones)
+        {
+            Transform finger = avatarAnimator.GetBoneTransform(bone);
+            if (finger != null)
+            {
+                fingerRestRotations[finger] = finger.localRotation;
+            }
+        }
+    }
+
+    private void UpdateFingerPose(XRNode node, bool isLeft)
+    {
+        if (avatarAnimator == null || !avatarAnimator.isHuman)
+        {
+            return;
+        }
+
+        InputDevice device = InputDevices.GetDeviceAtXRNode(node);
+        float thumb = device.TryGetFeatureValue(CommonUsages.primaryButton, out bool primaryPressed) && primaryPressed ? 1f : 0f;
+        device.TryGetFeatureValue(CommonUsages.trigger, out float index);
+        device.TryGetFeatureValue(CommonUsages.grip, out float middle);
+        // This avatar's mirrored Mixamo finger bones use the same positive local-X curl
+        // direction on both hands. Negating the left side bends it through the hand back.
+        const float direction = 1f;
+
+        ApplyThumbCurl(isLeft ? LeftThumbBones : RightThumbBones, thumb, isLeft);
+        ApplyFingerCurl(isLeft ? LeftIndexBones : RightIndexBones, index, direction);
+        ApplyFingerCurl(isLeft ? LeftGripBones : RightGripBones, middle, direction);
+    }
+
+    private void ApplyThumbCurl(HumanBodyBones[] bones, float amount, bool isLeft)
+    {
+        float curlAmount = Mathf.Clamp01(amount);
+        float oppositionDirection = isLeft ? -1f : 1f;
+
+        for (int index = 0; index < bones.Length; index++)
+        {
+            Transform finger = avatarAnimator.GetBoneTransform(bones[index]);
+            if (finger == null || !fingerRestRotations.TryGetValue(finger, out Quaternion restRotation))
+            {
+                continue;
+            }
+
+            Quaternion curl = Quaternion.AngleAxis(thumbCurlAngle * curlAmount, Vector3.right);
+            if (index == 0)
+            {
+                Quaternion opposition = Quaternion.AngleAxis(
+                    thumbOppositionAngle * curlAmount * oppositionDirection,
+                    Vector3.forward);
+                curl = opposition * curl;
+            }
+
+            finger.localRotation = restRotation * curl;
+        }
+    }
+
+    private void ApplyFingerCurl(HumanBodyBones[] bones, float amount, float direction)
+    {
+        Quaternion curl = Quaternion.AngleAxis(fingerCurlAngle * Mathf.Clamp01(amount) * direction, Vector3.right);
+        foreach (HumanBodyBones bone in bones)
+        {
+            Transform finger = avatarAnimator.GetBoneTransform(bone);
+            if (finger != null && fingerRestRotations.TryGetValue(finger, out Quaternion restRotation))
+            {
+                finger.localRotation = restRotation * curl;
+            }
+        }
+    }
+
+    private static readonly HumanBodyBones[] LeftThumbBones =
+    {
+        HumanBodyBones.LeftThumbProximal, HumanBodyBones.LeftThumbIntermediate, HumanBodyBones.LeftThumbDistal
+    };
+    private static readonly HumanBodyBones[] RightThumbBones =
+    {
+        HumanBodyBones.RightThumbProximal, HumanBodyBones.RightThumbIntermediate, HumanBodyBones.RightThumbDistal
+    };
+    private static readonly HumanBodyBones[] LeftIndexBones =
+    {
+        HumanBodyBones.LeftIndexProximal, HumanBodyBones.LeftIndexIntermediate, HumanBodyBones.LeftIndexDistal
+    };
+    private static readonly HumanBodyBones[] RightIndexBones =
+    {
+        HumanBodyBones.RightIndexProximal, HumanBodyBones.RightIndexIntermediate, HumanBodyBones.RightIndexDistal
+    };
+    private static readonly HumanBodyBones[] LeftGripBones =
+    {
+        HumanBodyBones.LeftMiddleProximal, HumanBodyBones.LeftMiddleIntermediate, HumanBodyBones.LeftMiddleDistal,
+        HumanBodyBones.LeftRingProximal, HumanBodyBones.LeftRingIntermediate, HumanBodyBones.LeftRingDistal,
+        HumanBodyBones.LeftLittleProximal, HumanBodyBones.LeftLittleIntermediate, HumanBodyBones.LeftLittleDistal
+    };
+    private static readonly HumanBodyBones[] RightGripBones =
+    {
+        HumanBodyBones.RightMiddleProximal, HumanBodyBones.RightMiddleIntermediate, HumanBodyBones.RightMiddleDistal,
+        HumanBodyBones.RightRingProximal, HumanBodyBones.RightRingIntermediate, HumanBodyBones.RightRingDistal,
+        HumanBodyBones.RightLittleProximal, HumanBodyBones.RightLittleIntermediate, HumanBodyBones.RightLittleDistal
+    };
 
     private void CreateTeleportVisuals()
     {
@@ -449,11 +749,22 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
         }
     }
 
-    private void HideLocalPlayerBody()
+    private void PrepareFirstPersonAvatar()
     {
+        // The PC and VR scenes share this complete avatar. Keep its body visible in VR,
+        // but collapse the local head so it cannot cover the headset camera.
         foreach (var bodyRenderer in GetComponentsInChildren<Renderer>(true))
         {
-            bodyRenderer.shadowCastingMode = ShadowCastingMode.ShadowsOnly;
+            bodyRenderer.shadowCastingMode = ShadowCastingMode.On;
+        }
+
+        if (avatarAnimator != null && avatarAnimator.isHuman)
+        {
+            avatarHead ??= avatarAnimator.GetBoneTransform(HumanBodyBones.Head);
+            if (avatarHead != null)
+            {
+                avatarHead.localScale = Vector3.zero;
+            }
         }
     }
 }

@@ -28,8 +28,20 @@ internal static class TestStage1OpenXRSetup
         }
 
         var perBuildTarget = GetOrCreatePerBuildTargetSettings();
-        ConfigureTarget(perBuildTarget, BuildTargetGroup.Standalone, false);
-        ConfigureTarget(perBuildTarget, BuildTargetGroup.Android, true);
+        // Standalone is always the PC VR host. Android is intentionally not
+        // changed here because it can be either a normal phone client or a
+        // Quest build. LazyAlchemistBuildWindow selects the Android mode.
+        ConfigureTarget(perBuildTarget, BuildTargetGroup.Standalone, true, false);
+        AssetDatabase.SaveAssets();
+    }
+
+    internal static void ConfigureForBuildTarget(
+        BuildTargetGroup targetGroup,
+        bool enableXr,
+        bool enableMetaQuestFeature)
+    {
+        var perBuildTarget = GetOrCreatePerBuildTargetSettings();
+        ConfigureTarget(perBuildTarget, targetGroup, enableXr, enableMetaQuestFeature);
         AssetDatabase.SaveAssets();
     }
 
@@ -60,6 +72,7 @@ internal static class TestStage1OpenXRSetup
     private static void ConfigureTarget(
         XRGeneralSettingsPerBuildTarget perBuildTarget,
         BuildTargetGroup targetGroup,
+        bool enableXr,
         bool enableMetaQuestFeature)
     {
         if (!perBuildTarget.HasSettingsForBuildTarget(targetGroup))
@@ -73,16 +86,24 @@ internal static class TestStage1OpenXRSetup
         }
 
         var manager = perBuildTarget.ManagerSettingsForBuildTarget(targetGroup);
-        manager.automaticLoading = true;
-        manager.automaticRunning = true;
+        manager.automaticLoading = enableXr;
+        manager.automaticRunning = enableXr;
 
-        if (!XRPackageMetadataStore.IsLoaderAssigned(LoaderTypeName, targetGroup))
+        var loaderAssigned = XRPackageMetadataStore.IsLoaderAssigned(LoaderTypeName, targetGroup);
+        if (enableXr && !loaderAssigned)
         {
             XRPackageMetadataStore.AssignLoader(manager, LoaderTypeName, targetGroup);
         }
+        else if (!enableXr && loaderAssigned)
+        {
+            XRPackageMetadataStore.RemoveLoader(manager, LoaderTypeName, targetGroup);
+        }
 
-        FeatureHelpers.RefreshFeatures(targetGroup);
-        EnableFeature(targetGroup, OculusTouchControllerProfile.featureId);
+        if (enableXr)
+        {
+            FeatureHelpers.RefreshFeatures(targetGroup);
+            EnableFeature(targetGroup, OculusTouchControllerProfile.featureId);
+        }
 
         if (enableMetaQuestFeature)
         {
