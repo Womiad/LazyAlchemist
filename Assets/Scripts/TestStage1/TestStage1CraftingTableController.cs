@@ -19,7 +19,8 @@ public class TestStage1CraftingTableController : MonoBehaviour
         "ele_land_btn",
         "ele_wind_btn",
         "ele_water_btn",
-        "firefly_btn"
+        "firefly_btn",
+        "slime_bait_btn"
     };
 
     private readonly List<Recipe> recipes = new List<Recipe>();
@@ -126,6 +127,13 @@ public class TestStage1CraftingTableController : MonoBehaviour
         {
             itemTexturesById["slimeBait"] = slimeBaitTexture;
         }
+        if (slimeBaitTexture != null)
+        {
+            itemTexturesById["slime_bait_fire"] = slimeBaitTexture;
+            itemTexturesById["slime_bait_land"] = slimeBaitTexture;
+            itemTexturesById["slime_bait_wind"] = slimeBaitTexture;
+            itemTexturesById["slime_bait_water"] = slimeBaitTexture;
+        }
 
         outputButton = EnsureButton(outputBlankTransform.gameObject);
         outputButton.interactable = true;
@@ -135,14 +143,17 @@ public class TestStage1CraftingTableController : MonoBehaviour
         foreach (var buttonName in ItemButtonNames)
         {
             var itemButtonTransform = FindChildByName(pageTransform, buttonName);
+            if (itemButtonTransform == null && string.Equals(buttonName, "slime_bait_btn", StringComparison.Ordinal))
+                itemButtonTransform = FindChildByName(pageTransform, "slime_bait");
             var itemButton = itemButtonTransform == null ? null : itemButtonTransform.GetComponent<Button>();
+            if (itemButton == null && itemButtonTransform != null) itemButton = EnsureButton(itemButtonTransform.gameObject);
             if (itemButton == null)
             {
-                Debug.LogWarning($"TestStage1 crafting table is missing item button: {buttonName}");
-                return;
+                if (string.Equals(buttonName, "slime_bait_btn", StringComparison.Ordinal)) continue;
+                Debug.LogWarning($"TestStage1 crafting table is missing item button: {buttonName}"); return;
             }
 
-            var itemId = GetItemIdFromButtonName(buttonName);
+            var itemId = string.Equals(buttonName, "slime_bait_btn", StringComparison.Ordinal) ? "slime_bait" : GetItemIdFromButtonName(buttonName);
             itemTexturesById[itemId] = FindDisplayTexture(itemButtonTransform);
             itemButton.interactable = true;
             AddButtonListener(itemButton, () => AddInputItem(itemId));
@@ -186,6 +197,18 @@ public class TestStage1CraftingTableController : MonoBehaviour
             return;
         }
 
+        if (string.Equals(itemId, "slime_bait", StringComparison.Ordinal))
+        {
+            itemId = TestStage1ItemInventoryController.CurrentSlimeBait switch
+            {
+                TestStage1ItemInventoryController.SlimeBaitType.Fire => "slime_bait_fire",
+                TestStage1ItemInventoryController.SlimeBaitType.Land => "slime_bait_land",
+                TestStage1ItemInventoryController.SlimeBaitType.Wind => "slime_bait_wind",
+                TestStage1ItemInventoryController.SlimeBaitType.Water => "slime_bait_water",
+                _ => "slime_bait"
+            };
+        }
+
         var targetIndex = Array.FindIndex(inputItems, string.IsNullOrEmpty);
         if (targetIndex < 0)
         {
@@ -204,11 +227,7 @@ public class TestStage1CraftingTableController : MonoBehaviour
             return;
         }
 
-        if (string.Equals(currentRecipe.OutputItemId, "slime_bait", StringComparison.Ordinal)
-            || string.Equals(currentRecipe.OutputItemId, "slimeBait", StringComparison.Ordinal))
-        {
-            TestStage1ItemInventoryController.SetSlimeBaitAcquired(true);
-        }
+        ApplyRecipeReward(currentRecipe);
 
         ClearCrafting();
     }
@@ -288,11 +307,16 @@ public class TestStage1CraftingTableController : MonoBehaviour
             return;
         }
 
-        if (string.Equals(recipe.OutputItemId, "slime_bait", StringComparison.Ordinal)
-            || string.Equals(recipe.OutputItemId, "slimeBait", StringComparison.Ordinal))
+        var type = recipe.OutputItemId switch
         {
-            TestStage1ItemInventoryController.SetSlimeBaitAcquired(true);
-        }
+            "slime_bait_fire" => TestStage1ItemInventoryController.SlimeBaitType.Fire,
+            "slime_bait_land" => TestStage1ItemInventoryController.SlimeBaitType.Land,
+            "slime_bait_wind" => TestStage1ItemInventoryController.SlimeBaitType.Wind,
+            "slime_bait_water" => TestStage1ItemInventoryController.SlimeBaitType.Water,
+            "slime_bait" or "slimeBait" => TestStage1ItemInventoryController.SlimeBaitType.All,
+            _ => TestStage1ItemInventoryController.SlimeBaitType.None
+        };
+        if (type != TestStage1ItemInventoryController.SlimeBaitType.None) TestStage1ItemInventoryController.SetSlimeBait(type);
     }
 
     private Recipe FindMatchingRecipe()
@@ -372,6 +396,14 @@ public class TestStage1CraftingTableController : MonoBehaviour
         // Example:
         // yield return new Recipe("output_item_id", "input_a", "input_b", "input_c");
         yield return new Recipe("slime_bait", "firefly", "ele_wind", "ele_water");
+        yield return new Recipe("slime_bait_wind", "ele_wind", "slime_bait");
+        yield return new Recipe("slime_bait_water", "ele_water", "slime_bait");
+        yield return new Recipe("slime_bait_fire", "ele_flame", "slime_bait");
+        yield return new Recipe("slime_bait_land", "ele_land", "slime_bait");
+        yield return new Recipe("slime_bait", "firefly", "slime_bait_wind");
+        yield return new Recipe("slime_bait", "firefly", "slime_bait_water");
+        yield return new Recipe("slime_bait", "firefly", "slime_bait_fire");
+        yield return new Recipe("slime_bait", "firefly", "slime_bait_land");
     }
 
     private static Button FindButton(Transform parent, string objectName)
@@ -453,12 +485,14 @@ public class TestStage1CraftingTableController : MonoBehaviour
 
         public bool Matches(string[] selectedInputItems)
         {
-            if (selectedInputItems == null || selectedInputItems.Length != inputItemIds.Length)
+            if (selectedInputItems == null)
             {
                 return false;
             }
 
-            var remainingInputs = new List<string>(selectedInputItems);
+            var remainingInputs = new List<string>();
+            foreach (var selected in selectedInputItems) if (!string.IsNullOrEmpty(selected)) remainingInputs.Add(selected);
+            if (remainingInputs.Count != inputItemIds.Length) return false;
             foreach (var inputItemId in inputItemIds)
             {
                 var matchIndex = remainingInputs.FindIndex(item =>

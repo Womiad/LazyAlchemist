@@ -322,6 +322,7 @@ public class TestStage1SlimeSmallController : MonoBehaviour
         if (!defeatedNotified)
         {
             defeatedNotified = true;
+            TestStage1QuestSystem.ReportSlimeDefeated(this);
             Defeated?.Invoke(this);
         }
 

@@ -5,6 +5,7 @@ using UnityEngine.SceneManagement;
 
 public class TestStage1SlimeSpawner : MonoBehaviour
 {
+    private const string SpawnElementMessage = "TestStage1.SlimeSpawnElement.v1";
     private const string SpawnPointName = "SlimeSpawnPoint";
     private const string SlimesRootName = "Slimes";
     private const float DefaultSpawnInterval = 3f;
@@ -18,9 +19,15 @@ public class TestStage1SlimeSpawner : MonoBehaviour
     private Transform slimesRoot;
     private float nextSpawnTime;
     private bool initialized;
+    private bool spawnElementHandlerRegistered;
+    private static TestStage1ElementPower selectedSpawnElement;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStatics() => selectedSpawnElement = TestStage1ElementPower.None;
 
     private void Update()
     {
+        RegisterSpawnElementHandler();
         if (!ShouldRunSpawner())
         {
             nextSpawnTime = Time.time + spawnInterval;
@@ -45,6 +52,35 @@ public class TestStage1SlimeSpawner : MonoBehaviour
 
         SpawnRandomSlime();
         nextSpawnTime = Time.time + spawnInterval;
+    }
+
+    private void OnDestroy()
+    {
+        if (spawnElementHandlerRegistered && NetworkManager.Singleton != null)
+            NetworkManager.Singleton.CustomMessagingManager.UnregisterNamedMessageHandler(SpawnElementMessage);
+    }
+
+    public static void RequestSpawnElement(TestStage1ElementPower element)
+    {
+        selectedSpawnElement = element;
+        var network = NetworkManager.Singleton;
+        if (TestStage1DebugMode.IsEnabled || network == null || !network.IsListening || network.IsServer) return;
+        using var writer = new FastBufferWriter(1, Unity.Collections.Allocator.Temp);
+        writer.WriteValueSafe((byte)element);
+        network.CustomMessagingManager.SendNamedMessage(SpawnElementMessage, NetworkManager.ServerClientId, writer);
+    }
+
+    private void RegisterSpawnElementHandler()
+    {
+        var network = NetworkManager.Singleton;
+        if (spawnElementHandlerRegistered || network == null || !network.IsServer) return;
+        network.CustomMessagingManager.RegisterNamedMessageHandler(SpawnElementMessage, (_, reader) =>
+        {
+            reader.ReadValueSafe(out byte value);
+            selectedSpawnElement = value <= (byte)TestStage1ElementPower.Water
+                ? (TestStage1ElementPower)value : TestStage1ElementPower.None;
+        });
+        spawnElementHandlerRegistered = true;
     }
 
     private bool ShouldRunSpawner()
@@ -95,7 +131,9 @@ public class TestStage1SlimeSpawner : MonoBehaviour
             return;
         }
 
-        var template = slimeTemplates[Random.Range(0, slimeTemplates.Count)];
+        var candidates = GetBaitCompatibleTemplates();
+        if (candidates.Count == 0) return;
+        var template = candidates[Random.Range(0, candidates.Count)];
         if (template == null)
         {
             slimeTemplates.Remove(template);
@@ -113,6 +151,27 @@ public class TestStage1SlimeSpawner : MonoBehaviour
         instance.name = template.name;
         instance.tag = "Untagged";
         instance.SetActive(true);
+    }
+
+    private List<Transform> GetBaitCompatibleTemplates()
+    {
+        if (selectedSpawnElement != TestStage1ElementPower.None)
+        {
+            var selectedKeyword = selectedSpawnElement == TestStage1ElementPower.Fire
+                ? "flame" : selectedSpawnElement.ToString().ToLowerInvariant();
+            var selected = new List<Transform>();
+            foreach (var template in slimeTemplates)
+                if (template != null && template.name.ToLowerInvariant().Contains(selectedKeyword)) selected.Add(template);
+            return selected;
+        }
+        var type = TestStage1ItemInventoryController.CurrentSlimeBait;
+        if (type == TestStage1ItemInventoryController.SlimeBaitType.All || type == TestStage1ItemInventoryController.SlimeBaitType.None)
+            return new List<Transform>(slimeTemplates);
+        var keyword = type.ToString().ToLowerInvariant();
+        if (keyword == "fire") keyword = "flame";
+        var result = new List<Transform>();
+        foreach (var template in slimeTemplates) if (template != null && template.name.ToLowerInvariant().Contains(keyword)) result.Add(template);
+        return result;
     }
 
     private int CountActiveSpawnedSlimes()

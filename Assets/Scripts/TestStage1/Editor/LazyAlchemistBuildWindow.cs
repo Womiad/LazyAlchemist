@@ -14,6 +14,7 @@ internal sealed class LazyAlchemistBuildWindow : EditorWindow
     private enum BuildProfile
     {
         AndroidPhoneClient,
+        WindowsPcClient,
         MetaQuestVr,
         WindowsPcVrHost
     }
@@ -47,6 +48,9 @@ internal sealed class LazyAlchemistBuildWindow : EditorWindow
 
     [MenuItem("Tools/Lazy Alchemist/Build/Android Phone Client")]
     private static void BuildPhoneFromMenu() => Build(BuildProfile.AndroidPhoneClient, false, false);
+
+    [MenuItem("Tools/Lazy Alchemist/Build/Windows PC Client")]
+    private static void BuildWindowsClientFromMenu() => Build(BuildProfile.WindowsPcClient, false, false);
 
     public static void BuildAndroidPhoneAndRunCommandLine()
     {
@@ -93,6 +97,8 @@ internal sealed class LazyAlchemistBuildWindow : EditorWindow
         {
             case BuildProfile.AndroidPhoneClient:
                 return "Android 手機 Client：關閉 OpenXR，輸出一般 APK。";
+            case BuildProfile.WindowsPcClient:
+                return "Windows PC Client：關閉 OpenXR，輸出一般 Windows x64 執行檔。";
             case BuildProfile.MetaQuestVr:
                 return "Meta Quest VR：啟用 Android OpenXR 與 Meta Quest 支援，輸出 Quest APK。";
             case BuildProfile.WindowsPcVrHost:
@@ -110,10 +116,12 @@ internal sealed class LazyAlchemistBuildWindow : EditorWindow
             return;
         }
 
-        var isPc = selectedProfile == BuildProfile.WindowsPcVrHost;
-        var target = isPc ? BuildTarget.StandaloneWindows64 : BuildTarget.Android;
-        var targetGroup = isPc ? BuildTargetGroup.Standalone : BuildTargetGroup.Android;
-        var enableXr = selectedProfile != BuildProfile.AndroidPhoneClient;
+        var isWindows = selectedProfile == BuildProfile.WindowsPcClient
+            || selectedProfile == BuildProfile.WindowsPcVrHost;
+        var target = isWindows ? BuildTarget.StandaloneWindows64 : BuildTarget.Android;
+        var targetGroup = isWindows ? BuildTargetGroup.Standalone : BuildTargetGroup.Android;
+        var enableXr = selectedProfile == BuildProfile.MetaQuestVr
+            || selectedProfile == BuildProfile.WindowsPcVrHost;
         var enableQuest = selectedProfile == BuildProfile.MetaQuestVr;
 
         TestStage1OpenXRSetup.ConfigureForBuildTarget(targetGroup, enableXr, enableQuest);
@@ -124,7 +132,7 @@ internal sealed class LazyAlchemistBuildWindow : EditorWindow
             return;
         }
 
-        if (!isPc)
+        if (!isWindows)
         {
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
         }
@@ -163,6 +171,18 @@ internal sealed class LazyAlchemistBuildWindow : EditorWindow
             options = options
         });
 
+        // A Windows Client build must not leave the shared Standalone target with XR disabled,
+        // otherwise the next Editor play session / PC VR Host build starts as a flat-screen app.
+        // The client executable has already captured its non-XR settings at this point, so it is
+        // safe to restore the Editor's default PC VR Host configuration immediately afterwards.
+        if (selectedProfile == BuildProfile.WindowsPcClient)
+        {
+            TestStage1OpenXRSetup.ConfigureForBuildTarget(
+                BuildTargetGroup.Standalone,
+                true,
+                false);
+        }
+
         var summary = report.summary;
         if (summary.result == BuildResult.Succeeded)
         {
@@ -181,6 +201,8 @@ internal sealed class LazyAlchemistBuildWindow : EditorWindow
         {
             case BuildProfile.AndroidPhoneClient:
                 return "Builds/AndroidPhone/LazyAlchemist_Client.apk";
+            case BuildProfile.WindowsPcClient:
+                return "Builds/WindowsPCClient/LazyAlchemist_PC_Client.exe";
             case BuildProfile.MetaQuestVr:
                 return "Builds/MetaQuest/LazyAlchemist_Quest.apk";
             case BuildProfile.WindowsPcVrHost:

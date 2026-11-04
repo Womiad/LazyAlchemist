@@ -34,6 +34,21 @@ public class TestStage1ElementDragController : MonoBehaviour
                 new ItemBinding("pickaxe")
             },
             false
+        ),
+        new SlotBinding(
+            "elements",
+            "blank_left_ele",
+            "elements_blank",
+            new[]
+            {
+                new ItemBinding("ele_flame", 0),
+                new ItemBinding("ele_land", 1),
+                new ItemBinding("ele_wind", 2),
+                new ItemBinding("ele_water", 3)
+            },
+            false,
+            true,
+            true
         )
     };
 
@@ -75,7 +90,7 @@ public class TestStage1ElementDragController : MonoBehaviour
             return TryDropObjectSlot(objectSlot, itemName, eventData);
         }
 
-        var slot = FindSlot(slotName);
+        var slot = FindDropSlot(slotName, itemName, eventData);
         if (slot == null
             || eventData == null
             || slot.DropZone == null
@@ -87,7 +102,12 @@ public class TestStage1ElementDragController : MonoBehaviour
 
         slot.ShowBlankItem(item.ObjectName);
 
-        if (slot.SendHostColorChange && item.ColorIndex.HasValue)
+        if (slot.ControlsSlimeSpawnElement && item.ColorIndex.HasValue)
+        {
+            TestStage1SlimeSpawner.RequestSpawnElement(TestStage1HandState.ElementFromColorIndex(item.ColorIndex.Value));
+            TestStage1ClientUiAudio.PlayItemChange();
+        }
+        else if (slot.SendHostColorChange && item.ColorIndex.HasValue)
         {
             TestStage1HandState.SetElementPower(TestStage1HandState.ElementFromColorIndex(item.ColorIndex.Value));
             TestStage1UI.RequestHostPresetColor(item.ColorIndex.Value);
@@ -120,7 +140,12 @@ public class TestStage1ElementDragController : MonoBehaviour
 
         slot.HideBlankItems();
 
-        if (slot.SendHostColorChange)
+        if (slot.ControlsSlimeSpawnElement)
+        {
+            TestStage1SlimeSpawner.RequestSpawnElement(TestStage1ElementPower.None);
+            TestStage1ClientUiAudio.PlayItemChange();
+        }
+        else if (slot.SendHostColorChange)
         {
             TestStage1HandState.SetElementPower(TestStage1ElementPower.None);
             TestStage1UI.RequestHostPresetColor(TestStage1UI.EmptyElementColorIndex);
@@ -153,6 +178,7 @@ public class TestStage1ElementDragController : MonoBehaviour
         {
             if (!TryInitializeSlot(clientUi.transform, slot))
             {
+                if (slot.Optional) continue;
                 return;
             }
         }
@@ -233,7 +259,7 @@ public class TestStage1ElementDragController : MonoBehaviour
 
         foreach (var blankObject in slot.BlankItemObjects)
         {
-            SetupDragSource(blankObject, slot.SourceContainerName, blankObject.name, true);
+            SetupDragSource(blankObject, slot.DropZoneName, blankObject.name, true);
         }
 
         slot.HideBlankItems();
@@ -335,12 +361,27 @@ public class TestStage1ElementDragController : MonoBehaviour
     {
         foreach (var slot in slots)
         {
-            if (string.Equals(slot.SourceContainerName, slotName, StringComparison.Ordinal))
+            if (string.Equals(slot.DropZoneName, slotName, StringComparison.Ordinal)
+                || string.Equals(slot.SourceContainerName, slotName, StringComparison.Ordinal))
             {
                 return slot;
             }
         }
 
+        return null;
+    }
+
+    private SlotBinding FindDropSlot(string sourceSlotName, string itemName, PointerEventData eventData)
+    {
+        if (eventData == null) return null;
+        foreach (var slot in slots)
+        {
+            if (!string.Equals(slot.SourceContainerName, sourceSlotName, StringComparison.Ordinal)
+                || slot.DropZone == null
+                || !slot.TryGetItem(itemName, out _)
+                || !IsPointerInside(slot.DropZone, eventData)) continue;
+            return slot;
+        }
         return null;
     }
 
@@ -497,6 +538,8 @@ public class TestStage1ElementDragController : MonoBehaviour
         public readonly string BlankContainerName;
         public readonly ItemBinding[] Items;
         public readonly bool SendHostColorChange;
+        public readonly bool ControlsSlimeSpawnElement;
+        public readonly bool Optional;
         public readonly List<GameObject> BlankItemObjects = new List<GameObject>();
 
         public RectTransform DropZone;
@@ -506,13 +549,17 @@ public class TestStage1ElementDragController : MonoBehaviour
             string dropZoneName,
             string blankContainerName,
             ItemBinding[] items,
-            bool sendHostColorChange)
+            bool sendHostColorChange,
+            bool controlsSlimeSpawnElement = false,
+            bool optional = false)
         {
             SourceContainerName = sourceContainerName;
             DropZoneName = dropZoneName;
             BlankContainerName = blankContainerName;
             Items = items;
             SendHostColorChange = sendHostColorChange;
+            ControlsSlimeSpawnElement = controlsSlimeSpawnElement;
+            Optional = optional;
         }
 
         public void CacheBlankItems(Transform blankContainer)

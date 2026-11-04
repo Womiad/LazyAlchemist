@@ -15,8 +15,6 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
     private const float MoveDeadZone = 0.15f;
     private const float MinimumValidFloorTrackedHeadHeight = 0.35f;
     private const int RequiredTrackingCalibrationSamples = 5;
-    private const float SnapTurnAngle = 30f;
-    private const float SnapTurnThreshold = 0.75f;
     private const float TeleportAimThreshold = 0.55f;
     private const float TeleportReleaseThreshold = 0.2f;
     private const float TeleportLaunchSpeed = 7.5f;
@@ -37,7 +35,6 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
     private LineRenderer teleportArc;
     private Transform teleportMarker;
     private Material teleportMaterial;
-    private bool canSnapTurn = true;
     private bool isTeleportAiming;
     private bool hasValidTeleportTarget;
     private bool hasCalibratedHeadsetPosition;
@@ -47,11 +44,95 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
     private Vector3 teleportTarget;
     private Vector3 teleportTargetNormal = Vector3.up;
     private Vector3 calibratedAvatarEyeLocalPosition = Vector3.up * CameraFallbackHeight;
-    private Vector3 avatarEyeToBodyOffset;
     private readonly Vector3[] teleportArcPositions = new Vector3[TeleportArcSegments + 1];
     private readonly RaycastHit[] teleportHits = new RaycastHit[16];
+    private UnityEngine.InputSystem.InputAction moveAction;
+    private UnityEngine.InputSystem.InputAction turnAction;
+    private UnityEngine.InputSystem.InputAction leftPositionAction;
+    private UnityEngine.InputSystem.InputAction leftRotationAction;
+    private UnityEngine.InputSystem.InputAction leftTrackedAction;
+    private UnityEngine.InputSystem.InputAction rightPositionAction;
+    private UnityEngine.InputSystem.InputAction rightRotationAction;
+    private UnityEngine.InputSystem.InputAction rightTrackedAction;
+    private UnityEngine.InputSystem.InputAction leftTriggerAction;
+    private UnityEngine.InputSystem.InputAction leftGripAction;
+    private UnityEngine.InputSystem.InputAction leftThumbTouchAction;
+    private UnityEngine.InputSystem.InputAction rightTriggerAction;
+    private UnityEngine.InputSystem.InputAction rightGripAction;
+    private UnityEngine.InputSystem.InputAction rightThumbTouchAction;
+    private bool leftGripWasPressed;
+    private bool rightGripWasPressed;
+    private bool pendingLeftGrab;
+    private bool pendingRightGrab;
+    private float leftGrabExpiresAt;
+    private float rightGrabExpiresAt;
 
     public static Vector2 MoveAxis { get; private set; }
+
+    private void OnEnable()
+    {
+        moveAction ??= new UnityEngine.InputSystem.InputAction(
+            "VR Move", UnityEngine.InputSystem.InputActionType.Value, "<XRController>{LeftHand}/thumbstick");
+        turnAction ??= new UnityEngine.InputSystem.InputAction(
+            "VR Turn", UnityEngine.InputSystem.InputActionType.Value, "<XRController>{RightHand}/thumbstick");
+        leftPositionAction ??= CreatePoseAction<Vector3>("Left Controller Position", "<XRController>{LeftHand}/devicePosition");
+        leftRotationAction ??= CreatePoseAction<Quaternion>("Left Controller Rotation", "<XRController>{LeftHand}/deviceRotation");
+        leftTrackedAction ??= CreatePoseAction<float>("Left Controller Tracked", "<XRController>{LeftHand}/isTracked");
+        rightPositionAction ??= CreatePoseAction<Vector3>("Right Controller Position", "<XRController>{RightHand}/devicePosition");
+        rightRotationAction ??= CreatePoseAction<Quaternion>("Right Controller Rotation", "<XRController>{RightHand}/deviceRotation");
+        rightTrackedAction ??= CreatePoseAction<float>("Right Controller Tracked", "<XRController>{RightHand}/isTracked");
+        leftTriggerAction ??= CreateValueAction("Left Trigger", "<XRController>{LeftHand}/trigger");
+        leftGripAction ??= CreateValueAction("Left Grip", "<XRController>{LeftHand}/grip");
+        leftThumbTouchAction ??= CreateThumbTouchAction("Left Thumb Touch", "LeftHand");
+        rightTriggerAction ??= CreateValueAction("Right Trigger", "<XRController>{RightHand}/trigger");
+        rightGripAction ??= CreateValueAction("Right Grip", "<XRController>{RightHand}/grip");
+        rightThumbTouchAction ??= CreateThumbTouchAction("Right Thumb Touch", "RightHand");
+        SetActionsEnabled(true);
+    }
+
+    private void OnDisable()
+    {
+        SetActionsEnabled(false);
+    }
+
+    private static UnityEngine.InputSystem.InputAction CreatePoseAction<TValue>(string name, string binding)
+        where TValue : struct
+    {
+        return new UnityEngine.InputSystem.InputAction(
+            name, UnityEngine.InputSystem.InputActionType.PassThrough, binding,
+            expectedControlType: typeof(TValue).Name);
+    }
+
+    private static UnityEngine.InputSystem.InputAction CreateValueAction(string name, string binding)
+    {
+        return new UnityEngine.InputSystem.InputAction(
+            name, UnityEngine.InputSystem.InputActionType.Value, binding);
+    }
+
+    private static UnityEngine.InputSystem.InputAction CreateThumbTouchAction(string name, string handUsage)
+    {
+        var action = new UnityEngine.InputSystem.InputAction(name, UnityEngine.InputSystem.InputActionType.Value);
+        UnityEngine.InputSystem.InputActionSetupExtensions.AddBinding(
+            action, $"<OculusTouchController>{{{handUsage}}}/primaryTouched");
+        UnityEngine.InputSystem.InputActionSetupExtensions.AddBinding(
+            action, $"<OculusTouchController>{{{handUsage}}}/secondaryTouched");
+        UnityEngine.InputSystem.InputActionSetupExtensions.AddBinding(
+            action, $"<OculusTouchController>{{{handUsage}}}/thumbstickTouched");
+        return action;
+    }
+
+    private void SetActionsEnabled(bool enabled)
+    {
+        UnityEngine.InputSystem.InputAction[] actions =
+        {
+            moveAction, turnAction, leftPositionAction, leftRotationAction, leftTrackedAction,
+            rightPositionAction, rightRotationAction, rightTrackedAction,
+            leftTriggerAction, leftGripAction, leftThumbTouchAction,
+            rightTriggerAction, rightGripAction, rightThumbTouchAction
+        };
+        foreach (var action in actions)
+            if (enabled) action?.Enable(); else action?.Disable();
+    }
 
     [Header("VR Avatar")]
     [SerializeField, Range(0f, 1f)] private float handIkWeight = 1f;
@@ -60,10 +141,11 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
     [SerializeField, Min(1f)] private float movementSpeedMultiplier = 1.6f;
     [SerializeField, Range(1.2f, 2f)] private float playerEyeHeight = 1.8f;
     [SerializeField] private float eyeOffsetFromHeadBone = DefaultEyeOffsetFromHeadBone;
-    [SerializeField, Range(0f, 0.5f)] private float bodyBackwardOffset = 0.18f;
+    [SerializeField, Range(0f, 0.5f)] private float firstPersonCameraForwardOffset = 0.22f;
     [SerializeField, Range(0f, 90f)] private float fingerCurlAngle = 65f;
     [SerializeField, Range(0f, 60f)] private float thumbCurlAngle = 35f;
     [SerializeField, Range(0f, 60f)] private float thumbOppositionAngle = 28f;
+    [SerializeField, Min(0.1f)] private float bodyFacingSmoothSpeed = 5f;
 
     protected override void InitializeTpCamera()
     {
@@ -75,6 +157,9 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
         }
 
         avatarAnimator = GetComponent<Animator>();
+        // In first-person VR the avatar can be outside its own camera frustum. Never
+        // let Animator culling freeze locomotion or controller-driven hand IK.
+        if (avatarAnimator != null) avatarAnimator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
         CalibrateAvatarEyeHeight();
         CacheFingerRestPose();
         IncreaseVrMovementSpeed();
@@ -102,20 +187,74 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
         TeleportInput();
     }
 
+    protected override void Update()
+    {
+        base.Update();
+        SampleGrabGestures();
+    }
+
+    private void SampleGrabGestures()
+    {
+        bool leftPressed = ReadAnalogControl(leftTriggerAction, XRNode.LeftHand, CommonUsages.trigger) >= 0.65f
+            || ReadAnalogControl(leftGripAction, XRNode.LeftHand, CommonUsages.grip) >= 0.65f;
+        bool rightPressed = ReadAnalogControl(rightTriggerAction, XRNode.RightHand, CommonUsages.trigger) >= 0.65f
+            || ReadAnalogControl(rightGripAction, XRNode.RightHand, CommonUsages.grip) >= 0.65f;
+        if (leftPressed && !leftGripWasPressed) { pendingLeftGrab = true; leftGrabExpiresAt = Time.time + .3f; }
+        if (rightPressed && !rightGripWasPressed) { pendingRightGrab = true; rightGrabExpiresAt = Time.time + .3f; }
+        leftGripWasPressed = leftPressed;
+        rightGripWasPressed = rightPressed;
+    }
+
+    private static float ReadAnalogControl(
+        UnityEngine.InputSystem.InputAction action,
+        XRNode node,
+        InputFeatureUsage<float> fallbackUsage)
+    {
+        if (action != null && action.controls.Count > 0) return action.ReadValue<float>();
+        var device = InputDevices.GetDeviceAtXRNode(node);
+        return device.TryGetFeatureValue(fallbackUsage, out float value) ? value : 0f;
+    }
+
+    public static bool TryConsumeGrabNear(Vector3 target, float radius)
+    {
+        var controller = FindFirstObjectByType<TestStage1VRHostController>();
+        if (controller == null) return false;
+        if (Time.time > controller.leftGrabExpiresAt) controller.pendingLeftGrab = false;
+        if (Time.time > controller.rightGrabExpiresAt) controller.pendingRightGrab = false;
+        float radiusSquared = radius * radius;
+        if (controller.pendingLeftGrab && controller.leftHandRoot != null
+            && controller.leftHandRoot.gameObject.activeSelf
+            && (controller.leftHandRoot.position - target).sqrMagnitude <= radiusSquared)
+        {
+            controller.pendingLeftGrab = false;
+            return true;
+        }
+        if (controller.pendingRightGrab && controller.rightHandRoot != null
+            && controller.rightHandRoot.gameObject.activeSelf
+            && (controller.rightHandRoot.position - target).sqrMagnitude <= radiusSquared)
+        {
+            controller.pendingRightGrab = false;
+            return true;
+        }
+        return false;
+    }
+
     protected override void FixedUpdate()
     {
         // VR locomotion is camera-relative, but the left stick must never rotate the avatar.
         cc.UpdateMotor();
         cc.ControlLocomotionType();
+        // Invector updates its smoothed movement input inside ControlRotationType.
+        // Run that calculation, but restore the original yaw so the left stick only
+        // translates the VR player and never turns their view/body.
+        Quaternion rotationBeforeMovementUpdate = transform.rotation;
+        cc.ControlRotationType();
+        transform.rotation = rotationBeforeMovementUpdate;
     }
 
     public override void MoveInput()
     {
-        var leftController = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
-        if (!leftController.TryGetFeatureValue(CommonUsages.primary2DAxis, out var moveAxis))
-        {
-            moveAxis = Vector2.zero;
-        }
+        TryReadControllerAxis(XRNode.LeftHand, out var moveAxis);
 
         if (moveAxis.magnitude < MoveDeadZone)
         {
@@ -135,22 +274,6 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
         }
 
         cc.UpdateMoveDirection(vrCamera.transform);
-
-        var rightController = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
-        if (!rightController.TryGetFeatureValue(CommonUsages.primary2DAxis, out var turnAxis))
-        {
-            turnAxis = Vector2.zero;
-        }
-
-        if (Mathf.Abs(turnAxis.x) < SnapTurnThreshold * 0.5f)
-        {
-            canSnapTurn = true;
-        }
-        else if (canSnapTurn && turnAxis.y < TeleportAimThreshold && Mathf.Abs(turnAxis.x) >= SnapTurnThreshold)
-        {
-            SnapTurn(Mathf.Sign(turnAxis.x) * SnapTurnAngle);
-            canSnapTurn = false;
-        }
     }
 
     protected override void SprintInput()
@@ -218,9 +341,6 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
 
         UpdateTrackedHand(XRNode.LeftHand, leftHandRoot);
         UpdateTrackedHand(XRNode.RightHand, rightHandRoot);
-        UpdateFingerPose(XRNode.LeftHand, true);
-        UpdateFingerPose(XRNode.RightHand, false);
-
         if (isTeleportAiming)
         {
             UpdateTeleportArc();
@@ -229,8 +349,7 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
 
     private void TeleportInput()
     {
-        var rightController = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
-        if (!rightController.TryGetFeatureValue(CommonUsages.primary2DAxis, out var axis))
+        if (!TryReadControllerAxis(XRNode.RightHand, out var axis))
         {
             CancelTeleportAim();
             return;
@@ -250,6 +369,51 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
 
             CancelTeleportAim();
         }
+    }
+
+    private bool TryReadControllerAxis(XRNode node, out Vector2 axis)
+    {
+        var action = node == XRNode.LeftHand ? moveAction : turnAction;
+        if (action != null && action.enabled)
+        {
+            axis = action.ReadValue<Vector2>();
+            return true;
+        }
+
+        var xrDevice = InputDevices.GetDeviceAtXRNode(node);
+        if (xrDevice.TryGetFeatureValue(CommonUsages.primary2DAxis, out axis))
+        {
+            return true;
+        }
+
+        // Meta OpenXR controllers are exposed primarily through the new Input System.
+        // Keep the legacy XR path above for other runtimes, and fall back to the
+        // OpenXR "thumbstick" control so Quest/Touch controllers always drive movement.
+        var inputDevice = FindInputSystemController(node);
+        if (inputDevice != null)
+        {
+            var stick = inputDevice.TryGetChildControl<UnityEngine.InputSystem.Controls.Vector2Control>("thumbstick")
+                ?? inputDevice.TryGetChildControl<UnityEngine.InputSystem.Controls.Vector2Control>("primary2DAxis");
+            if (stick != null)
+            {
+                axis = stick.ReadValue();
+                return true;
+            }
+        }
+
+        axis = Vector2.zero;
+        return false;
+    }
+
+    private static UnityEngine.InputSystem.InputDevice FindInputSystemController(XRNode node)
+    {
+        var wantedUsage = node == XRNode.LeftHand
+            ? UnityEngine.InputSystem.CommonUsages.LeftHand
+            : UnityEngine.InputSystem.CommonUsages.RightHand;
+        foreach (var inputDevice in UnityEngine.InputSystem.InputSystem.devices)
+            foreach (var usage in inputDevice.usages)
+                if (usage == wantedUsage) return inputDevice;
+        return null;
     }
 
     private void UpdateTeleportArc()
@@ -450,38 +614,21 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
             return;
         }
 
-        AlignAvatarBodyToHeadset();
+        AlignAvatarBodyToHands();
         ApplyHandIk(AvatarIKGoal.LeftHand, AvatarIKHint.LeftElbow, leftHandRoot, leftHandRotationOffset, -1f);
         ApplyHandIk(AvatarIKGoal.RightHand, AvatarIKHint.RightElbow, rightHandRoot, rightHandRotationOffset, 1f);
+        UpdateFingerPose(XRNode.LeftHand, true);
+        UpdateFingerPose(XRNode.RightHand, false);
     }
 
-    private void AlignAvatarBodyToHeadset()
+    private void AlignAvatarBodyToHands()
     {
-        if (vrCamera == null)
-        {
-            return;
-        }
-
-        // Keep the hips beneath the player's real-world headset offset while preserving
-        // the locomotion animation's vertical motion. Hands are solved afterwards, so
-        // this body correction does not pull them away from the tracked controllers.
-        Vector3 viewForward = Vector3.ProjectOnPlane(vrCamera.transform.forward, Vector3.up);
-        if (viewForward.sqrMagnitude > 0.001f)
-        {
-            Quaternion targetBodyRotation = Quaternion.LookRotation(viewForward.normalized, Vector3.up);
-            avatarAnimator.bodyRotation = targetBodyRotation;
-
-            // Animator.bodyPosition is the humanoid mass center, not the hips or feet.
-            // Driving its Y from the camera sinks this particular avatar below ground,
-            // so preserve the locomotion animation's grounded vertical position.
-            Vector3 desiredBodyPosition = vrCamera.transform.position
-                - targetBodyRotation * avatarEyeToBodyOffset;
-            desiredBodyPosition -= viewForward.normalized * bodyBackwardOffset;
-            Vector3 groundedBodyPosition = avatarAnimator.bodyPosition;
-            groundedBodyPosition.x = desiredBodyPosition.x;
-            groundedBodyPosition.z = desiredBodyPosition.z;
-            avatarAnimator.bodyPosition = groundedBodyPosition;
-        }
+        if (vrCamera == null) return;
+        Vector3 direction = Vector3.ProjectOnPlane(vrCamera.transform.forward, Vector3.up);
+        if (direction.sqrMagnitude < .001f) return;
+        Quaternion target = Quaternion.LookRotation(direction.normalized, Vector3.up);
+        float blend = 1f - Mathf.Exp(-bodyFacingSmoothSpeed * Time.deltaTime);
+        avatarAnimator.bodyRotation = Quaternion.Slerp(avatarAnimator.bodyRotation, target, blend);
     }
 
     private void ApplyHandIk(
@@ -520,10 +667,38 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
             return;
         }
 
+        var positionAction = node == XRNode.LeftHand ? leftPositionAction : rightPositionAction;
+        var rotationAction = node == XRNode.LeftHand ? leftRotationAction : rightRotationAction;
+        var trackedAction = node == XRNode.LeftHand ? leftTrackedAction : rightTrackedAction;
+        bool hasActionPose = positionAction != null && rotationAction != null
+            && positionAction.controls.Count > 0 && rotationAction.controls.Count > 0;
+        Vector3 localPosition = hasActionPose ? positionAction.ReadValue<Vector3>() : default;
+        Quaternion localRotation = hasActionPose ? rotationAction.ReadValue<Quaternion>() : Quaternion.identity;
+        // Oculus PC can expose a valid pose while its isTracked control stays at zero.
+        bool isTracked = hasActionPose;
+        bool hasPosition = hasActionPose;
+        bool hasRotation = hasActionPose;
         InputDevice device = InputDevices.GetDeviceAtXRNode(node);
-        bool isTracked = device.TryGetFeatureValue(CommonUsages.isTracked, out bool tracked) && tracked;
-        bool hasPosition = device.TryGetFeatureValue(CommonUsages.devicePosition, out Vector3 localPosition);
-        bool hasRotation = device.TryGetFeatureValue(CommonUsages.deviceRotation, out Quaternion localRotation);
+        if (!hasActionPose)
+        {
+            isTracked = device.TryGetFeatureValue(CommonUsages.isTracked, out bool tracked) && tracked;
+            hasPosition = device.TryGetFeatureValue(CommonUsages.devicePosition, out localPosition);
+            hasRotation = device.TryGetFeatureValue(CommonUsages.deviceRotation, out localRotation);
+        }
+        if (!isTracked || !hasPosition || !hasRotation)
+        {
+            var inputDevice = FindInputSystemController(node);
+            var trackedControl = inputDevice?.TryGetChildControl<UnityEngine.InputSystem.Controls.ButtonControl>("isTracked");
+            var positionControl = inputDevice?.TryGetChildControl<UnityEngine.InputSystem.Controls.Vector3Control>("devicePosition");
+            var rotationControl = inputDevice?.TryGetChildControl<UnityEngine.InputSystem.Controls.QuaternionControl>("deviceRotation");
+            if (positionControl != null && rotationControl != null)
+            {
+                isTracked = trackedControl == null || trackedControl.isPressed;
+                localPosition = positionControl.ReadValue();
+                localRotation = rotationControl.ReadValue();
+                hasPosition = hasRotation = true;
+            }
+        }
         bool visible = isTracked && hasPosition && hasRotation && hasCalibratedHeadsetPosition;
         handRoot.gameObject.SetActive(visible);
         if (!visible)
@@ -557,9 +732,8 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
         // metres in some animation poses. Camera height belongs to the VR player, not
         // to that animated bone, so only use the bone for its fore/aft eye placement.
         calibratedAvatarEyeLocalPosition.y = playerEyeHeight;
+        calibratedAvatarEyeLocalPosition.z += firstPersonCameraForwardOffset;
         eyePosition = transform.TransformPoint(calibratedAvatarEyeLocalPosition);
-        avatarEyeToBodyOffset = Quaternion.Inverse(avatarAnimator.bodyRotation)
-            * (eyePosition - avatarAnimator.bodyPosition);
     }
 
     private void IncreaseVrMovementSpeed()
@@ -614,10 +788,25 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
             return;
         }
 
-        InputDevice device = InputDevices.GetDeviceAtXRNode(node);
-        float thumb = device.TryGetFeatureValue(CommonUsages.primaryButton, out bool primaryPressed) && primaryPressed ? 1f : 0f;
-        device.TryGetFeatureValue(CommonUsages.trigger, out float index);
-        device.TryGetFeatureValue(CommonUsages.grip, out float middle);
+        var triggerAction = isLeft ? leftTriggerAction : rightTriggerAction;
+        var gripAction = isLeft ? leftGripAction : rightGripAction;
+        var thumbAction = isLeft ? leftThumbTouchAction : rightThumbTouchAction;
+        bool hasActionInput = triggerAction != null && triggerAction.controls.Count > 0;
+        float index = hasActionInput ? triggerAction.ReadValue<float>() : 0f;
+        float middle = gripAction != null && gripAction.controls.Count > 0 ? gripAction.ReadValue<float>() : 0f;
+        float thumb = thumbAction != null && thumbAction.controls.Count > 0 && thumbAction.ReadValue<float>() > 0.01f
+            ? 0.65f : 0f;
+
+        if (!hasActionInput)
+        {
+            InputDevice device = InputDevices.GetDeviceAtXRNode(node);
+            bool primaryTouched = device.TryGetFeatureValue(CommonUsages.primaryTouch, out bool primaryTouch) && primaryTouch;
+            bool secondaryTouched = device.TryGetFeatureValue(CommonUsages.secondaryTouch, out bool secondaryTouch) && secondaryTouch;
+            bool stickTouched = device.TryGetFeatureValue(CommonUsages.primary2DAxisTouch, out bool axisTouch) && axisTouch;
+            thumb = primaryTouched || secondaryTouched || stickTouched ? 0.65f : 0f;
+            device.TryGetFeatureValue(CommonUsages.trigger, out index);
+            device.TryGetFeatureValue(CommonUsages.grip, out middle);
+        }
         // This avatar's mirrored Mixamo finger bones use the same positive local-X curl
         // direction on both hands. Negating the left side bends it through the hand back.
         const float direction = 1f;
@@ -649,7 +838,7 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
                 curl = opposition * curl;
             }
 
-            finger.localRotation = restRotation * curl;
+            avatarAnimator.SetBoneLocalRotation(bones[index], restRotation * curl);
         }
     }
 
@@ -661,7 +850,7 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
             Transform finger = avatarAnimator.GetBoneTransform(bone);
             if (finger != null && fingerRestRotations.TryGetValue(finger, out Quaternion restRotation))
             {
-                finger.localRotation = restRotation * curl;
+                avatarAnimator.SetBoneLocalRotation(bone, restRotation * curl);
             }
         }
     }
@@ -729,12 +918,6 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
         }
     }
 
-    private void SnapTurn(float angle)
-    {
-        var headPosition = vrCamera.transform.position;
-        transform.RotateAround(headPosition, Vector3.up, angle);
-    }
-
     private static void SetFloorTrackingOrigin()
     {
         var subsystems = new List<XRInputSubsystem>();
@@ -774,8 +957,13 @@ public static class TestStage1VRInput
     private static int sampledFrame = -1;
     private static bool collectWasPressed;
     private static bool attackWasPressed;
+    private static bool grabWasPressed;
+    private static bool rightGrabWasPressed;
     private static bool collectPressedThisFrame;
     private static bool attackPressedThisFrame;
+    private static bool grabPressedThisFrame;
+    private static bool rightGrabPressedThisFrame;
+    private static bool rightGrabHeld;
 
     public static bool CollectPressedThisFrame
     {
@@ -795,6 +983,10 @@ public static class TestStage1VRInput
         }
     }
 
+    public static bool GrabPressedThisFrame { get { SampleButtons(); return grabPressedThisFrame; } }
+    public static bool RightGrabPressedThisFrame { get { SampleButtons(); return rightGrabPressedThisFrame; } }
+    public static bool RightGrabHeld { get { SampleButtons(); return rightGrabHeld; } }
+
     private static void SampleButtons()
     {
         if (sampledFrame == Time.frameCount)
@@ -807,8 +999,11 @@ public static class TestStage1VRInput
         {
             collectPressedThisFrame = false;
             attackPressedThisFrame = false;
+            grabPressedThisFrame = rightGrabPressedThisFrame = false;
+            rightGrabHeld = false;
             collectWasPressed = false;
             attackWasPressed = false;
+            grabWasPressed = rightGrabWasPressed = false;
             return;
         }
 
@@ -817,10 +1012,41 @@ public static class TestStage1VRInput
             && primary;
         var attackPressed = controller.TryGetFeatureValue(CommonUsages.triggerButton, out var triggerButton)
             && triggerButton;
+        bool leftGrabPressed = ReadTriggerOrGrip(XRNode.LeftHand);
+        bool rightGrabPressed = ReadTriggerOrGrip(XRNode.RightHand);
+        rightGrabHeld = rightGrabPressed;
+        bool grabPressed = leftGrabPressed || rightGrabPressed;
 
         collectPressedThisFrame = collectPressed && !collectWasPressed;
         attackPressedThisFrame = attackPressed && !attackWasPressed;
+        grabPressedThisFrame = grabPressed && !grabWasPressed;
+        rightGrabPressedThisFrame = rightGrabPressed && !rightGrabWasPressed;
         collectWasPressed = collectPressed;
         attackWasPressed = attackPressed;
+        grabWasPressed = grabPressed;
+        rightGrabWasPressed = rightGrabPressed;
+    }
+
+    private static bool ReadTriggerOrGrip(XRNode node)
+    {
+        var xrDevice = InputDevices.GetDeviceAtXRNode(node);
+        bool legacyTrigger = xrDevice.TryGetFeatureValue(CommonUsages.trigger, out float trigger) && trigger >= .65f;
+        bool legacyGrip = xrDevice.TryGetFeatureValue(CommonUsages.grip, out float grip) && grip >= .65f;
+        if (legacyTrigger || legacyGrip) return true;
+
+        var wantedUsage = node == XRNode.LeftHand
+            ? UnityEngine.InputSystem.CommonUsages.LeftHand
+            : UnityEngine.InputSystem.CommonUsages.RightHand;
+        foreach (var device in UnityEngine.InputSystem.InputSystem.devices)
+        {
+            bool correctHand = false;
+            foreach (var usage in device.usages) if (usage == wantedUsage) { correctHand = true; break; }
+            if (!correctHand) continue;
+            var triggerControl = device.TryGetChildControl<UnityEngine.InputSystem.Controls.AxisControl>("trigger");
+            var gripControl = device.TryGetChildControl<UnityEngine.InputSystem.Controls.AxisControl>("grip");
+            return (triggerControl != null && triggerControl.ReadValue() >= .65f)
+                || (gripControl != null && gripControl.ReadValue() >= .65f);
+        }
+        return false;
     }
 }

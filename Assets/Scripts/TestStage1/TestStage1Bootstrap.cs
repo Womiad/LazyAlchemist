@@ -53,14 +53,12 @@ public static class TestStage1Bootstrap
 
         EnsureComponent<TestStage1ItemInventoryController>(managerObject);
         EnsureComponent<TestStage1PressFPromptController>(managerObject);
-        EnsureComponent<TestStage1FireflyCollectionController>(managerObject);
-        EnsureComponent<TestStage1WaterCrystalCollectionController>(managerObject);
-        EnsureComponent<TestStage1LandCrystalCollectionController>(managerObject);
+        EnsureComponent<TestStage1QuestSystem>(managerObject);
+        EnsureComponent<TestStage1ResourceSpawner>(managerObject);
         EnsureComponent<TestStage1BookUIController>(managerObject);
         EnsureComponent<TestStage1ElementDragController>(managerObject);
         EnsureComponent<TestStage1CraftingTableController>(managerObject);
         EnsureComponent<TestStage1SlimeSpawner>(managerObject);
-        EnsureComponent<TestStage1SlimeHuntController>(managerObject);
         EnsureComponent<TestStage1CompletionController>(managerObject);
 
         if (TestStage1DebugMode.IsEnabled)
@@ -70,6 +68,8 @@ public static class TestStage1Bootstrap
 
         if (activeSceneName == VrSceneName)
         {
+            AudioListener.pause = false;
+            AudioListener.volume = 1f;
             EnsureComponent<TestStage1VRColliderOptimizer>(managerObject);
             ConfigureVrHost();
         }
@@ -82,6 +82,7 @@ public static class TestStage1Bootstrap
         TestStage1FireflyCollectionController.ResetRuntimeState();
         TestStage1WaterCrystalCollectionController.ResetRuntimeState();
         TestStage1SlimeHuntController.ResetRuntimeState();
+        TestStage1QuestSystem.ResetRuntimeState();
         TestStage1PressFPromptController.ResetRuntimeState();
     }
 
@@ -111,7 +112,6 @@ public static class TestStage1Bootstrap
             return;
         }
 
-        var isHost = TestStage1DebugMode.IsHost;
         foreach (var input in player.GetComponents<vThirdPersonInput>())
         {
             if (input is not TestStage1VRHostController)
@@ -120,7 +120,9 @@ public static class TestStage1Bootstrap
             }
         }
 
-        if (isHost && player.GetComponent<TestStage1VRHostController>() == null)
+        // TestStage1_VR is the dedicated Host scene. NetworkManager may not report
+        // IsHost yet during sceneLoaded, so never gate the VR controller on that race.
+        if (player.GetComponent<TestStage1VRHostController>() == null)
         {
             player.gameObject.AddComponent<TestStage1VRHostController>();
         }

@@ -4,6 +4,7 @@ using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using TMPro;
 
 public class TestStage1CompletionController : MonoBehaviour
 {
@@ -118,9 +119,7 @@ public class TestStage1CompletionController : MonoBehaviour
             return;
         }
 
-        var shouldShow = TestStage1FireflyCollectionController.IsCompleted
-            && TestStage1WaterCrystalCollectionController.IsCompleted
-            && TestStage1SlimeHuntController.IsCompleted;
+        var shouldShow = TestStage1QuestSystem.IsRunComplete;
 
         if (completeUiVisible == shouldShow)
         {
@@ -138,7 +137,32 @@ public class TestStage1CompletionController : MonoBehaviour
 
         if (shouldShow)
         {
+            ApplyStatisticsText();
             RefreshCompleteUiLayout();
+        }
+    }
+
+    private void ApplyStatisticsText()
+    {
+        foreach (var completeUi in completeUis)
+        {
+            if (completeUi == null) continue;
+            var texts = completeUi.GetComponentsInChildren<TMP_Text>(true);
+            TMP_Text target = null;
+            foreach (var text in texts) if (text != null && (text.name.IndexOf("stat", StringComparison.OrdinalIgnoreCase) >= 0 || text.name.IndexOf("result", StringComparison.OrdinalIgnoreCase) >= 0)) { target = text; break; }
+            if (target == null)
+            {
+                var statsObject = new GameObject("RunStatistics", typeof(RectTransform), typeof(TextMeshProUGUI));
+                statsObject.transform.SetParent(completeUi.transform, false);
+                var rect = statsObject.GetComponent<RectTransform>();
+                rect.anchorMin = new Vector2(.25f, .25f); rect.anchorMax = new Vector2(.75f, .68f);
+                rect.offsetMin = rect.offsetMax = Vector2.zero;
+                target = statsObject.GetComponent<TextMeshProUGUI>();
+                target.alignment = TextAlignmentOptions.Center;
+                target.fontSize = 36f;
+                target.color = Color.white;
+            }
+            if (target != null) target.text = TestStage1QuestSystem.GetStatisticsText();
         }
     }
 
@@ -178,9 +202,7 @@ public class TestStage1CompletionController : MonoBehaviour
             return;
         }
 
-        TestStage1FireflyCollectionController.CompletedChanged += OnTaskCompletedChanged;
-        TestStage1WaterCrystalCollectionController.CompletedChanged += OnTaskCompletedChanged;
-        TestStage1SlimeHuntController.CompletedChanged += OnTaskCompletedChanged;
+        TestStage1QuestSystem.RunCompleted += OnRunCompleted;
         subscribed = true;
     }
 
@@ -191,9 +213,7 @@ public class TestStage1CompletionController : MonoBehaviour
             return;
         }
 
-        TestStage1FireflyCollectionController.CompletedChanged -= OnTaskCompletedChanged;
-        TestStage1WaterCrystalCollectionController.CompletedChanged -= OnTaskCompletedChanged;
-        TestStage1SlimeHuntController.CompletedChanged -= OnTaskCompletedChanged;
+        TestStage1QuestSystem.RunCompleted -= OnRunCompleted;
         subscribed = false;
     }
 
@@ -201,6 +221,8 @@ public class TestStage1CompletionController : MonoBehaviour
     {
         RefreshCompleteUi();
     }
+
+    private void OnRunCompleted() { RefreshCompleteUi(); }
 
     private void RemoveButtonListeners()
     {
