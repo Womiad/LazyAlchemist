@@ -128,6 +128,7 @@ public class TestStage1ResourceSpawner : MonoBehaviour
     private void TryCollectFirefly()
     {
         if (!IsAuthority()) return;
+        if (TestStage1HandState.RightHandTool != TestStage1RightHandTool.None) return;
         var host = GameObject.Find("Host3D");
         var vrController = FindFirstObjectByType<TestStage1VRHostController>();
         Transform playerTransform = vrController != null ? vrController.transform : host?.transform;

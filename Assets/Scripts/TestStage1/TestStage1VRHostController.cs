@@ -46,6 +46,7 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
     private Vector3 calibratedAvatarEyeLocalPosition = Vector3.up * CameraFallbackHeight;
     private readonly Vector3[] teleportArcPositions = new Vector3[TeleportArcSegments + 1];
     private readonly RaycastHit[] teleportHits = new RaycastHit[16];
+    private readonly Collider[] teleportOverlaps = new Collider[32];
     private UnityEngine.InputSystem.InputAction moveAction;
     private UnityEngine.InputSystem.InputAction turnAction;
     private UnityEngine.InputSystem.InputAction leftPositionAction;
@@ -66,6 +67,7 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
     private bool pendingRightGrab;
     private float leftGrabExpiresAt;
     private float rightGrabExpiresAt;
+    private int teleportVelocityResetFrames;
 
     public static Vector2 MoveAxis { get; private set; }
 
@@ -250,6 +252,20 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
         Quaternion rotationBeforeMovementUpdate = transform.rotation;
         cc.ControlRotationType();
         transform.rotation = rotationBeforeMovementUpdate;
+
+        // A teleport happens between physics ticks.  Keep the controller from carrying
+        // a collision-separation or stale airborne velocity into the new location.
+        if (teleportVelocityResetFrames > 0)
+        {
+            var body = GetComponent<Rigidbody>();
+            if (body != null)
+            {
+                body.linearVelocity = Vector3.zero;
+                body.angularVelocity = Vector3.zero;
+            }
+
+            teleportVelocityResetFrames--;
+        }
     }
 
     public override void MoveInput()
@@ -527,6 +543,12 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
             transform.position = destination;
         }
 
+        cc.isJumping = false;
+        cc.isGrounded = true;
+        cc.verticalVelocity = 0f;
+        cc.heightReached = destination.y;
+        teleportVelocityResetFrames = 2;
+
         Physics.SyncTransforms();
     }
 
@@ -540,6 +562,11 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
 
     private bool HasEnoughWallClearance(Vector3 destination)
     {
+        if (!HasCapsuleClearance(destination))
+        {
+            return false;
+        }
+
         // Check several body heights so low props, walls and overhang edges are all rejected.
         foreach (float height in TeleportClearanceHeights)
         {
@@ -570,6 +597,43 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
                         return false;
                     }
                 }
+            }
+        }
+
+        return true;
+    }
+
+    private bool HasCapsuleClearance(Vector3 destination)
+    {
+        CapsuleCollider capsule = GetComponent<CapsuleCollider>();
+        if (capsule == null || !capsule.enabled)
+        {
+            return true;
+        }
+
+        Vector3 scale = transform.lossyScale;
+        float radius = capsule.radius * Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.z));
+        float height = Mathf.Max(capsule.height * Mathf.Abs(scale.y), radius * 2f);
+        Vector3 centerOffset = transform.rotation * Vector3.Scale(capsule.center, scale);
+        Vector3 center = destination + centerOffset;
+        float halfLine = Mathf.Max(0f, height * 0.5f - radius);
+        Vector3 top = center + transform.up * halfLine;
+        Vector3 bottom = center - transform.up * halfLine;
+
+        int overlapCount = Physics.OverlapCapsuleNonAlloc(
+            bottom,
+            top,
+            radius,
+            teleportOverlaps,
+            Physics.DefaultRaycastLayers,
+            QueryTriggerInteraction.Ignore);
+
+        for (int index = 0; index < overlapCount; index++)
+        {
+            Collider overlap = teleportOverlaps[index];
+            if (overlap != null && !overlap.transform.IsChildOf(transform))
+            {
+                return false;
             }
         }
 
@@ -904,7 +968,11 @@ public sealed class TestStage1VRHostController : vThirdPersonInput
         markerObject.name = "VRTeleportMarker";
         markerObject.transform.localScale = new Vector3(0.28f, 0.006f, 0.28f);
         markerObject.GetComponent<Renderer>().sharedMaterial = teleportMaterial;
-        Destroy(markerObject.GetComponent<Collider>());
+        // Primitive markers include a collider by default. Disable it immediately so
+        // it can never push the player upward when teleporting onto the marker.
+        Collider markerCollider = markerObject.GetComponent<Collider>();
+        markerCollider.enabled = false;
+        Destroy(markerCollider);
         teleportMarker = markerObject.transform;
 
         SetTeleportVisualsActive(false);
